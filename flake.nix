@@ -18,7 +18,7 @@
     flake-utils.url = "github:numtide/flake-utils";
 
     proj-repo = {
-      url = "git+https://git.sr.ht/~lockshaw/proj";
+      url = "git+https://github.com/elliottslaughter/proj.git?ref=refs/heads/master&rev=2c1bf9d570e55c469de06e7649767f221d0f1a11";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
@@ -30,7 +30,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, proj-repo, nixGL, ... }: flake-utils.lib.eachSystem [ "x86_64-linux" ] (system: 
+  outputs = { self, nixpkgs, flake-utils, proj-repo, nixGL, ... }: flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" ] (system: 
     let 
       pkgs = import nixpkgs {
         inherit system;
@@ -107,18 +107,19 @@
               ccache
               pkg-config
               python3
-              cudatoolkit
-              cudaPackages.cuda_nvcc
-              cudaPackages.cudnn
-              cudaPackages.nccl
-              cudaPackages.libcublas
-              cudaPackages.cuda_cudart
               tl-expected
               doxygen
               lcov # for code coverage
               compdb
               gbenchmark
               libtorch-bin
+            ] ++ lib.optionals stdenv.isLinux [
+              cudatoolkit
+              cudaPackages.cuda_nvcc
+              cudaPackages.cudnn
+              cudaPackages.nccl
+              cudaPackages.libcublas
+              cudaPackages.cuda_cudart
             ])
             (with proj-repo.packages.${system}; [
               proj
