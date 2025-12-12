@@ -31,12 +31,13 @@ stdenv.mkDerivation rec {
   ];
 
   cmakeFlags = [
+    "-DLegion_MAX_DIM=${toString maxDim}"
+  ] ++ lib.optionals stdenv.isLinux [
     "-DLegion_USE_CUDA=1"
     "-DLegion_CUDA_ARCH=${lib.concatStringsSep "," cudaCapabilities}"
-    "-DLegion_MAX_DIM=${toString maxDim}"
   ];
 
-  buildInputs = [ 
+  buildInputs = lib.optionals stdenv.isLinux [
     cudatoolkit
   ];
 

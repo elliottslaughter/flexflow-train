@@ -39,7 +39,7 @@
       lib = pkgs.lib;
 
       mkShell = attrs: pkgs.mkShell.override {
-        stdenv = pkgs.cudaPackages.backendStdenv;
+        stdenv = if pkgs.stdenv.isLinux then pkgs.cudaPackages.backendStdenv else pkgs.stdenv;
       } (attrs // {
         hardeningDisable = ["all"]; # disable nixpkgs default compiler arguments, otherwise ubsan doesn't catch 
                                     # signed overflows due to the signedoverflow hardening setting. 
@@ -74,6 +74,14 @@
           };
           patches = [
             ./.flake/patches/doctest-template-test.patch
+
+            # Fix the build with Clang.
+            (pkgs.fetchpatch {
+              name = "doctest-disable-warnings.patch";
+              url = "https://github.com/doctest/doctest/commit/c8d9ed2398d45aa5425d913bd930f580560df30d.patch";
+              excludes = [ ".github/workflows/main.yml" ];
+              hash = "sha256-kOBy0om6MPM2vLXZjNLXiezZqVgNr/viBI7mXrOZts8=";
+            })
           ];
         });
       };
