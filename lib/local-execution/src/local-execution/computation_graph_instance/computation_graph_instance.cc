@@ -30,7 +30,7 @@ ComputationGraphInstance::ComputationGraphInstance(
     DynamicOpenDataflowGraph dataflow_graph,
     Allocator &allocator,
     std::vector<DynamicNodeInvocation> const &topological_ordering,
-    std::optional<OptimizerAttrs> const &optimizer_attrs,
+    OptimizerAttrs const &optimizer_attrs,
     std::optional<LossAttrs> const &loss_attrs,
     std::optional<GenericTensorAccessorW> logit_grad_tensor)
     : dataflow_graph(dataflow_graph), allocator(allocator),
@@ -49,13 +49,12 @@ std::vector<DynamicNodeInvocation> const &
     ComputationGraphInstance::get_topological_ordering() const {
   return this->topological_ordering;
 }
-std::optional<OptimizerAttrs> const &
-    ComputationGraphInstance::get_optimizer_attrs() const {
+OptimizerAttrs const &ComputationGraphInstance::get_optimizer_attrs() const {
   return this->optimizer_attrs;
 }
 void ComputationGraphInstance::update_optimizer_attrs_for_next_iter() {
   this->optimizer_attrs =
-      transform(this->optimizer_attrs, get_optimizer_attrs_for_next_iter);
+      get_optimizer_attrs_for_next_iter(this->optimizer_attrs);
 }
 std::optional<LossAttrs> const &
     ComputationGraphInstance::get_loss_attrs() const {
@@ -86,7 +85,7 @@ static DynamicNodeInvocation
                     ProfilingSettings const &profiling_settings,
                     device_handle_t const &device_handle,
                     FFIterationConfig const &iteration_config,
-                    std::optional<OptimizerAttrs> const &optimizer_attrs,
+                    OptimizerAttrs const &optimizer_attrs,
                     device_id_t device_idx) {
   if (!i.node_attrs.op_attrs) {
     return i;
@@ -143,7 +142,7 @@ static GenericTensorAccessorW
 
 ComputationGraphInstance create_computation_graph_instance(
     ComputationGraph const &cg,
-    std::optional<OptimizerAttrs> const &optimizer_attrs,
+    OptimizerAttrs const &optimizer_attrs,
     std::optional<LossAttrs> const &loss_attrs,
     std::optional<GenericTensorAccessorR> label_tensor,
     std::optional<dynamic_tensor_guid_t> logit_tensor,
@@ -168,9 +167,7 @@ ComputationGraphInstance create_computation_graph_instance(
     inputs.insert(std::pair{label_v, assert_unwrap(label_tensor)});
   }
 
-  if (optimizer_attrs) {
-    dg = perform_update_insertion(dg, assert_unwrap(optimizer_attrs));
-  }
+  dg = perform_update_insertion(dg, optimizer_attrs);
   dg = perform_tensor_allocation(dg, inputs, allocator);
 
   std::optional<GenericTensorAccessorW> logit_grad_tensor =
@@ -210,7 +207,7 @@ static std::unordered_map<dynamic_layer_guid_t, std::optional<milliseconds_t>>
     execute_dynamic_node_invocation_set(
         std::vector<DynamicNodeInvocation> const &invocations,
         Allocator &allocator,
-        std::optional<OptimizerAttrs> const &optimizer_attrs,
+        OptimizerAttrs const &optimizer_attrs,
         ProfilingSettings const &profiling_settings,
         device_handle_t const &ff_handle,
         std::optional<LossAttrs> const &loss_attrs,

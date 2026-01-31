@@ -93,7 +93,7 @@ OpCostMetrics LocalCostEstimator::estimate_cost(
       op_cost_estimate_key.weight_shapes;
   std::unordered_map<TensorSlotName, ParallelTensorShape> outputs =
       op_cost_estimate_key.output_shapes;
-  MachineView mv = op_cost_estimate_key.machine_view;
+  OptimizerAttrs optimizer_attrs = op_cost_estimate_key.optimizer_attrs;
 
   if (is_parallel_op(op) || op.has<InputAttrs>() || op.has<NoopAttrs>() ||
       op.has<WeightAttrs>()) {
@@ -121,7 +121,7 @@ OpCostMetrics LocalCostEstimator::estimate_cost(
 
   ComputationGraphInstance instance = create_computation_graph_instance(
       /*compgraph=*/cg,
-      /*optimizer_attrs=*/std::nullopt,
+      /*optimizer_attrs=*/optimizer_attrs,
       /*loss_attrs=*/std::nullopt,
       /*label_tensor=*/std::nullopt,
       /*logit_tensor=*/std::nullopt,

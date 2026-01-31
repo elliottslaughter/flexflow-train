@@ -21,13 +21,13 @@ public:
   ComputationGraphInstance(DynamicOpenDataflowGraph,
                            Allocator &,
                            std::vector<DynamicNodeInvocation> const &,
-                           std::optional<OptimizerAttrs> const &,
+                           OptimizerAttrs const &,
                            std::optional<LossAttrs> const &,
                            std::optional<GenericTensorAccessorW>);
   DynamicOpenDataflowGraph const &get_dynamic_dataflow_graph() const;
   Allocator &get_allocator() const;
   std::vector<DynamicNodeInvocation> const &get_topological_ordering() const;
-  std::optional<OptimizerAttrs> const &get_optimizer_attrs() const;
+  OptimizerAttrs const &get_optimizer_attrs() const;
   void update_optimizer_attrs_for_next_iter();
   std::optional<LossAttrs> const &get_loss_attrs() const;
   std::optional<GenericTensorAccessorR> get_loss_tensor_accessor() const;
@@ -36,14 +36,14 @@ private:
   DynamicOpenDataflowGraph dataflow_graph;
   Allocator &allocator;
   std::vector<DynamicNodeInvocation> topological_ordering;
-  std::optional<OptimizerAttrs> optimizer_attrs;
+  OptimizerAttrs optimizer_attrs;
   std::optional<LossAttrs> loss_attrs;
   std::optional<GenericTensorAccessorW> logit_grad_tensor;
 };
 
 ComputationGraphInstance create_computation_graph_instance(
     ComputationGraph const &compgraph,
-    std::optional<OptimizerAttrs> const &optimizer_attrs,
+    OptimizerAttrs const &optimizer_attrs,
     std::optional<LossAttrs> const &loss_attrs,
     std::optional<GenericTensorAccessorR> label_tensor,
     std::optional<dynamic_tensor_guid_t> logit_tensor,
