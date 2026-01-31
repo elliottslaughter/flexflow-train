@@ -161,9 +161,6 @@ OpCostMetrics LocalCostEstimator::estimate_cost(
 
 milliseconds_t LocalCostEstimator::estimate_cost(
     TensorSetMovement const &tensor_set_movement) const {
-  NOT_IMPLEMENTED();
-#if 0
-
   auto estimate_single_comm_cost =
       [&](MachineSpaceCoordinate const &src,
           MachineSpaceCoordinate const &dst,
@@ -185,8 +182,6 @@ milliseconds_t LocalCostEstimator::estimate_cost(
                   return estimate_single_comm_cost(
                       p.first.get_src(), p.first.get_dst(), p.second);
                 }));
-
-#endif
 }
 
 CostEstimator get_local_cost_estimator(
