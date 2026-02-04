@@ -1,6 +1,5 @@
 #include "local-execution/cost_estimator/local_cost_estimator.h"
 #include "compiler/machine_mapping/machine_view.h"
-#include "internal/test_utils.h"
 #include "kernels/device_handle_t.h"
 #include "kernels/local_cpu_allocator.h"
 #include "kernels/local_cuda_allocator.h"
