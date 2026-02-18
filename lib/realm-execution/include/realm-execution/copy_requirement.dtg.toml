@@ -1,0 +1,18 @@
+namespace = "FlexFlow"
+name = "CopyRequirement"
+type = "struct"
+features = [
+  "eq",
+]
+
+includes = [
+  "realm-execution/realm.h",
+]
+
+[[fields]]
+name = "copy_from"
+type = "::FlexFlow::Realm::RegionInstance"
+
+[[fields]]
+name = "copy_to"
+type = "::FlexFlow::Realm::RegionInstance"
