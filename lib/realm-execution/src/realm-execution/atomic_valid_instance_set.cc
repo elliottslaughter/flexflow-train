@@ -7,7 +7,7 @@
 namespace FlexFlow {
 
 std::optional<CopyRequirement>
-    AtomicValidInstanceSet::add_write(Realm::RegionInstance inst) {
+    AtomicValidInstanceSet::get_copy_for_write(Realm::RegionInstance inst) {
   // We assume that writes may read the existing data, so a valid copy must be
   // provided
   std::optional<CopyRequirement> required_copy =
@@ -21,7 +21,7 @@ std::optional<CopyRequirement>
 }
 
 std::optional<CopyRequirement>
-    AtomicValidInstanceSet::add_read(Realm::RegionInstance inst) {
+    AtomicValidInstanceSet::get_copy_for_read(Realm::RegionInstance inst) {
   std::optional<CopyRequirement> required_copy =
       this->compute_required_copy(inst, true);
   this->valid_instances.insert(inst);

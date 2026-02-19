@@ -14,10 +14,12 @@ struct ValidInstanceSet {
 public:
   ValidInstanceSet() = default;
 
-  std::optional<CopyRequirement> add_write(DynamicValueAttrs const &value,
-                                           Realm::RegionInstance inst);
-  std::optional<CopyRequirement> add_read(DynamicValueAttrs const &value,
-                                          Realm::RegionInstance inst);
+  std::optional<CopyRequirement>
+      get_copy_for_write(DynamicValueAttrs const &value,
+                         Realm::RegionInstance inst);
+  std::optional<CopyRequirement>
+      get_copy_for_read(DynamicValueAttrs const &value,
+                        Realm::RegionInstance inst);
 
 private:
   AtomicValidInstanceSet &

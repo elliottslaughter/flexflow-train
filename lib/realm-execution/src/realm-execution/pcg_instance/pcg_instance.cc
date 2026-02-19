@@ -1,12 +1,14 @@
 #include "realm-execution/pcg_instance/pcg_instance.h"
 #include "op-attrs/tensor_slot_name.dtg.h"
 #include "pcg/optimizer_attrs.h"
+#include "realm-execution/copy_requirement.dtg.h"
 #include "realm-execution/dependency_set.h"
 #include "realm-execution/distributed_device_state_initialization.h"
 #include "realm-execution/instance_allocation.h"
 #include "realm-execution/realm_context.h"
 #include "realm-execution/tasks/impl/op_task.h"
 #include "realm-execution/tensor_instance_backing.h"
+#include "realm-execution/valid_instance_set.h"
 #include "task-spec/dynamic_graph/dynamic_node_invocation.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_open_dataflow_graph.h"
 #include "task-spec/dynamic_graph/dynamic_task_type.dtg.h"
@@ -18,11 +20,17 @@
 #include "task-spec/dynamic_graph/shard_expansion.h"
 #include "task-spec/dynamic_graph/training_operation_attrs.dtg.h"
 #include "task-spec/dynamic_graph/update_insertion.h"
+#include "utils/containers/contains_key.h"
 #include "utils/containers/map_values.h"
 #include "utils/containers/transform.h"
+#include "utils/containers/unordered_map_from_pairs.h"
 #include "utils/containers/values.h"
+#include "utils/containers/vector_of.h"
+#include "utils/exception.h"
 #include "utils/graph/digraph/algorithms/get_topological_ordering.h"
 #include "utils/optional.h"
+#include <optional>
+#include <unordered_map>
 
 namespace FlexFlow {
 
@@ -170,8 +178,53 @@ static std::unordered_map<dynamic_layer_guid_t, Realm::Event>
   // For simplicity we'll track a dependency on all outstanding operations up to
   // this point. This will create an effective barrier between phases.
   DependencySet dependency_set{ctx.get_outstanding_events()};
+  ValidInstanceSet valid_instance_set;
   return unordered_map_from_pairs(
       transform(invocations, [&](DynamicNodeInvocation const &invocation) {
+        TensorInstanceBacking tensor_backing =
+            subset_tensor_instance_backing_for_invocation(
+                tensor_instance_backing, invocation);
+
+        std::unordered_map<DynamicValueAttrs, std::optional<CopyRequirement>>
+            output_copies = unordered_map_from_pairs(transform(
+                vector_of(values(invocation.outputs)),
+                [&](DynamicValueAttrs const &value) {
+                  return std::pair{
+                      value,
+                      valid_instance_set.get_copy_for_write(
+                          value, tensor_backing.backing.at(value).first)};
+                }));
+        std::unordered_map<DynamicValueAttrs, std::optional<CopyRequirement>>
+            input_copies = unordered_map_from_pairs(transform(
+                vector_of(values(invocation.inputs)),
+                [&](DynamicValueAttrs const &value) {
+                  std::optional<CopyRequirement> result;
+                  if (!contains_key(output_copies, value)) {
+                    result = valid_instance_set.get_copy_for_read(
+                        value, tensor_backing.backing.at(value).first);
+                  }
+                  return std::pair{value, result};
+                }));
+        std::vector<Realm::Event> copy_events;
+        for (auto const &[value, copy] : output_copies) {
+          Realm::Event precondition =
+              dependency_set.get_dependency_for_writer(value);
+          // TODO: issue copy
+          NOT_IMPLEMENTED();
+          Realm::Event copy_result = Realm::Event::NO_EVENT;
+          dependency_set.add_writer(value, copy_result);
+          copy_events.push_back(copy_result);
+        }
+        for (auto const &[value, copy] : input_copies) {
+          Realm::Event precondition =
+              dependency_set.get_dependency_for_reader(value);
+          // TODO: issue copy
+          NOT_IMPLEMENTED();
+          Realm::Event copy_result = Realm::Event::NO_EVENT;
+          dependency_set.add_reader(value, copy_result);
+          copy_events.push_back(copy_result);
+        }
+
         TrainingOperationAttrs op_attrs =
             assert_unwrap(invocation.node_attrs.op_attrs);
         if (op_attrs.is_pcg_op() && (op_attrs.require_pcg_op().is_input() ||
@@ -191,14 +244,11 @@ static std::unordered_map<dynamic_layer_guid_t, Realm::Event>
                         return dependency_set.get_dependency_for_writer(value);
                       });
         Realm::Event dependencies = Realm::Event::merge_events(
+            Realm::Event::merge_events(copy_events),
             Realm::Event::merge_events(input_dependencies),
             Realm::Event::merge_events(output_dependencies));
         Realm::Processor target_proc = ctx.map_device_coord_to_processor(
             assert_unwrap(invocation.node_attrs.device_coord));
-
-        TensorInstanceBacking tensor_backing =
-            subset_tensor_instance_backing_for_invocation(
-                tensor_instance_backing, invocation);
 
         Realm::Event result =
             spawn_op_task(ctx,

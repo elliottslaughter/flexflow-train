@@ -4,15 +4,15 @@
 namespace FlexFlow {
 
 std::optional<CopyRequirement>
-    ValidInstanceSet::add_write(DynamicValueAttrs const &value,
-                                Realm::RegionInstance inst) {
-  return this->get_atomic_valid_instance_set(value).add_write(inst);
+    ValidInstanceSet::get_copy_for_write(DynamicValueAttrs const &value,
+                                         Realm::RegionInstance inst) {
+  return this->get_atomic_valid_instance_set(value).get_copy_for_write(inst);
 }
 
 std::optional<CopyRequirement>
-    ValidInstanceSet::add_read(DynamicValueAttrs const &value,
-                               Realm::RegionInstance inst) {
-  return this->get_atomic_valid_instance_set(value).add_read(inst);
+    ValidInstanceSet::get_copy_for_read(DynamicValueAttrs const &value,
+                                        Realm::RegionInstance inst) {
+  return this->get_atomic_valid_instance_set(value).get_copy_for_read(inst);
 }
 
 AtomicValidInstanceSet &ValidInstanceSet::get_atomic_valid_instance_set(

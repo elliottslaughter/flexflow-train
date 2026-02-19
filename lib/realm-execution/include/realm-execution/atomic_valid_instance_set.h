@@ -12,8 +12,8 @@ struct AtomicValidInstanceSet {
 public:
   AtomicValidInstanceSet() = default;
 
-  std::optional<CopyRequirement> add_write(Realm::RegionInstance inst);
-  std::optional<CopyRequirement> add_read(Realm::RegionInstance inst);
+  std::optional<CopyRequirement> get_copy_for_write(Realm::RegionInstance inst);
+  std::optional<CopyRequirement> get_copy_for_read(Realm::RegionInstance inst);
 
 private:
   std::optional<CopyRequirement>
