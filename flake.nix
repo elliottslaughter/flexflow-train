@@ -14,7 +14,7 @@
   };
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-23.11";
+    nixpkgs.url = "nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
 
     proj-repo = {
@@ -56,6 +56,7 @@
         cpptrace = pkgs.callPackage ./.flake/pkgs/cpptrace.nix { inherit libdwarf-lite; };
         libassert = pkgs.callPackage ./.flake/pkgs/libassert.nix { inherit cpptrace; };
         realm = pkgs.callPackage ./.flake/pkgs/realm.nix { };
+        legion-prof = pkgs.callPackage ./.flake/pkgs/legion-prof.nix { };
         bencher-cli = pkgs.callPackage ./.flake/pkgs/bencher-cli.nix { };
         ffdb = pkgs.callPackage ./.flake/pkgs/ffdb { inherit proj; };
         hpp2plantuml = pkgs.python3Packages.callPackage ./.flake/pkgs/hpp2plantuml.nix { };
@@ -125,6 +126,7 @@
             (with self.packages.${system}; [
               libassert
               realm
+              legion-prof
               rapidcheckFull
               doctest
             ])
