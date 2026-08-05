@@ -4,8 +4,10 @@
 
 This directory contains command-line interfaces for %FlexFlow %Train and associated tools (all in C++).
 
+- \subpage compile-model "": \copybrief compile-model
 - \subpage export-model-arch "": \copybrief export-model-arch
 - \subpage protobuf-to-json "": \copybrief protobuf-to-json
+- \subpage run-model "": \copybrief run-model
 - \subpage sp-ization-benchmarking "": \copybrief sp-ization-benchmarking
 - \subpage substitution-to-dot "": \copybrief substitution-to-dot
 
