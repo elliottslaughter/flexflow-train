@@ -7,7 +7,10 @@
 namespace FlexFlow {
 
 bool cli_get_flag(CLIParseResult const &, CLIArgumentKey const &);
-std::string cli_get_argument(CLIParseResult const &, CLIArgumentKey const &);
+std::string cli_get_positional_argument(CLIParseResult const &,
+                                        CLIArgumentKey const &);
+std::optional<std::string> cli_get_named_argument(CLIParseResult const &,
+                                                  CLIArgumentKey const &);
 
 } // namespace FlexFlow
 

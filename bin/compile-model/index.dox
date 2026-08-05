@@ -1,0 +1,36 @@
+namespace FlexFlow {
+/**
+
+@page compile-model compile-model
+
+\brief Run the model specified by the \ref MappedParallelComputationGraph, encoded as JSON.
+
+The main entry point for the FlexFlow Train compiler. The compiler takes a \ref ComputationGraph describing the operations to be performed and transforms it into a \ref MappedParallelComputationGraph that describes how to execute it on a given parallel machine.
+
+\verbatim
+$ proj cmake # if you haven't already
+...
+$ proj build
+...
+$ proj run -- compile-model -h
+\endverbatim
+
+The above should print the help message for `compile-model`.
+
+A typical workflow would involve generating a model (e.g., via \ref export-model-arch), compiling it, and then running (via \ref run-model):
+
+\verbatim
+$ proj run -- export-model-arch split_test > split_test_cg.json
+$ proj run -- compile-model split_test_cg.json split_test_mpcg.json passthrough
+$ proj run -- run-model split_test_mpcg.json
+\endverbatim
+
+If you'd like to compile a model for a target machine other than the one you're running the compiler on, you can pass the path of a json file as the value of the
+<tt>--machine-spec-json</tt> argument to manually specify the configuration of the target machine, e.g.,
+\verbatim
+$ proj run -- compile-model --machine-spec-json my_machine_spec.json split_test_cg.json split_test_mpcg.json passthrough
+\endverbatim
+For how to create a machine specification file, see \ref file-format-v1-machine-specification here.
+
+*/
+}

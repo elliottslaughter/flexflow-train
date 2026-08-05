@@ -1,7 +1,7 @@
 #ifndef _FLEXFLOW_LIB_UTILS_INCLUDE_UTILS_CLI_CLI_GET_HELP_MESSAGE_H
 #define _FLEXFLOW_LIB_UTILS_INCLUDE_UTILS_CLI_CLI_GET_HELP_MESSAGE_H
 
-#include "utils/cli/cli_spec.dtg.h"
+#include "utils/cli/cli_spec.h"
 
 namespace FlexFlow {
 

@@ -124,43 +124,50 @@ tl::expected<JsonSPModelExport, std::string>
 
 int main(int argc, char **argv) {
   //! [utils/cli example]
-  CLISpec cli = empty_cli_spec();
+  CLISpec cli;
 
   CLIArgumentKey arg_key_help = cli_add_help_flag(cli);
 
-  CLIArgumentKey key_sp_decomposition =
-      cli_add_flag(cli,
-                   CLIFlagSpec{"sp-decomposition",
-                               std::nullopt,
-                               "also output a series parallel decomposition of "
-                               "the model's computation graph"});
+  CLIArgumentKey key_sp_decomposition = cli.add_flag(CLIFlagSpec{
+      /*long_flag=*/"sp-decomposition",
+      /*short_flag=*/std::nullopt,
+      /*description=*/
+      ("also output a series parallel decomposition of "
+       "the model's computation graph"),
+  });
 
-  CLIArgumentKey key_dot = cli_add_flag(
-      cli,
-      CLIFlagSpec{
-          "dot",
-          std::nullopt,
-          "output a dot representation of the model's computation graph"});
+  CLIArgumentKey key_dot = cli.add_flag(CLIFlagSpec{
+      /*long_flag=*/"dot",
+      /*short_flag=*/std::nullopt,
+      /*description=*/
+      "output a dot representation of the model's computation graph",
+  });
 
-  CLIArgumentKey key_preprocessed_dot = cli_add_flag(
-      cli,
-      CLIFlagSpec{"preprocessed-dot",
-                  std::nullopt,
-                  "output a dot representation of model's computation graph "
-                  "for preprocessed to help check series-parallel structure"});
+  CLIArgumentKey key_preprocessed_dot = cli.add_flag(CLIFlagSpec{
+      /*long_flag=*/"preprocessed-dot",
+      /*short_flag=*/std::nullopt,
+      /*description=*/
+      ("output a dot representation of model's computation graph "
+       "for preprocessed to help check series-parallel structure"),
+  });
 
-  std::vector<std::string> model_options = {"transformer",
-                                            "inception_v3",
-                                            "candle_uno",
-                                            "bert",
-                                            "dlrm",
-                                            "split_test",
-                                            "single_operator",
-                                            "yolov10x"};
-  CLIArgumentKey key_model_name = cli_add_positional_argument(
-      cli,
-      CLIPositionalArgumentSpec{
-          "model", model_options, "name of the model to export"});
+  std::vector<std::string> model_options = {
+      "transformer",
+      "inception_v3",
+      "candle_uno",
+      "bert",
+      "dlrm",
+      "split_test",
+      "single_operator",
+      "yolov10x",
+  };
+
+  CLIArgumentKey key_model_name =
+      cli.add_positional_argument(CLIPositionalArgumentSpec{
+          /*name=*/"model",
+          /*choices=*/model_options,
+          /*description=*/"name of the model to export",
+      });
 
   assert(argc >= 1);
   std::string prog_name = argv[0];
@@ -185,7 +192,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  std::string model_name = cli_get_argument(parsed, key_model_name);
+  std::string model_name = cli_get_positional_argument(parsed, key_model_name);
   bool sp_decompositition = cli_get_flag(parsed, key_sp_decomposition);
   bool dot = cli_get_flag(parsed, key_dot);
   bool preprocessed_dot = cli_get_flag(parsed, key_preprocessed_dot);

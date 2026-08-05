@@ -1,5 +1,25 @@
+namespace FlexFlow{
 /**
 
-@page file-format pcg/file_format/v1
+\page file-format-v1 pcg/file_format/v1
+
+\brief V1 file format for serializing and deserializing FlexFlow datastructures to and from disk.
+
+\section file-format-v1-machine-specification Machine Specification
+
+\code{.json}
+{
+  "__type": "V1MachineSpecification",
+  "num_nodes": 8,
+  "num_cpus_per_node": 32,
+  "num_gpus_per_node": 4,
+  "inter_node_bandwidth_bytes_per_second": 58.0,
+  "intra_node_bandwidth_bytes_per_second": 32.0
+}
+\endcode
+
+Note that the <tt>__type</tt> field is not necessary.
+It is output by FlexFlow to be helpful, but ommitting it in your handwritten JSON is also fine.
 
 */
+}

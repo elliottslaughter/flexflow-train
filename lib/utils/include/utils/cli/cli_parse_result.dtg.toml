@@ -12,18 +12,25 @@ features = [
 includes = [
   "<map>",
   "<string>",
+  "<optional>",
   "utils/cli/cli_flag_key.dtg.h",
+  "utils/cli/cli_named_argument_key.dtg.h",
   "utils/cli/cli_positional_argument_key.dtg.h",
 ]
 
 src_includes = [
   "utils/fmt/map.h",
   "utils/hash/map.h",
+  "utils/json/optional.h",
 ]
 
 [[fields]]
 name = "flags"
 type = "std::map<::FlexFlow::CLIFlagKey, bool>"
+
+[[fields]]
+name = "named_arguments"
+type = "std::map<::FlexFlow::CLINamedArgumentKey, std::optional<std::string>>"
 
 [[fields]]
 name = "positional_arguments"

@@ -1,0 +1,12 @@
+ff_add_executable(
+  NAME
+    compile-model
+  SRC_PATTERNS
+    src/*.cc
+  PRIVATE_INCLUDE
+    include/
+  DEPS
+    compiler
+    kernels
+    local-execution
+)

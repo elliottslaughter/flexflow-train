@@ -30,16 +30,17 @@ static std::vector<char *> make_realm_args(std::string_view executable_name) {
 }
 
 int main(int argc, char **argv) {
-  CLISpec cli = empty_cli_spec();
+  CLISpec cli;
 
   CLIArgumentKey arg_key_help = cli_add_help_flag(cli);
 
-  CLIArgumentKey key_mapped_pcg_json = cli_add_positional_argument(
-      cli,
-      CLIPositionalArgumentSpec{
-          "mapped_pcg_json",
-          std::nullopt,
-          "path to a file containing mappped PCG encoded as JSON"});
+  CLIArgumentKey key_mapped_pcg_json =
+      cli.add_positional_argument(CLIPositionalArgumentSpec{
+          /*name=*/"mapped_pcg_json",
+          /*choices=*/std::nullopt,
+          /*description=*/
+          "path to a file containing mappped PCG encoded as JSON",
+      });
 
   ASSERT(argc >= 1);
   std::string prog_name = argv[0];
@@ -64,7 +65,8 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  std::string mapped_pcg_json = cli_get_argument(parsed, key_mapped_pcg_json);
+  std::string mapped_pcg_json =
+      cli_get_positional_argument(parsed, key_mapped_pcg_json);
 
   std::vector<char *> realm_args = make_realm_args(prog_name);
   int realm_argc = realm_args.size();

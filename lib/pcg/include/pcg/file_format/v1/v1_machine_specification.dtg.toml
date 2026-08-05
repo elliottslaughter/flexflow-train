@@ -1,0 +1,36 @@
+namespace = "FlexFlow"
+name = "V1MachineSpecification"
+type = "struct"
+features = [
+  "eq",
+  "ord",
+  "hash",
+  "json",
+  "rapidcheck",
+  "fmt",
+]
+
+includes = [
+  "utils/positive_int/positive_int.h",
+  "pcg/machine_interconnect_specification.dtg.h",
+]
+
+[[fields]]
+name = "num_nodes"
+type = "::FlexFlow::positive_int"
+
+[[fields]]
+name = "num_cpus_per_node"
+type = "::FlexFlow::positive_int"
+
+[[fields]]
+name = "num_gpus_per_node"
+type = "::FlexFlow::positive_int"
+
+[[fields]]
+name = "inter_node_bandwidth_bytes_per_second"
+type = "float"
+
+[[fields]]
+name = "intra_node_bandwidth_bytes_per_second"
+type = "float"

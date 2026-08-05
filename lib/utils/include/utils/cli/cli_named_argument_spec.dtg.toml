@@ -1,5 +1,5 @@
 namespace = "FlexFlow"
-name = "CLIFlagSpec"
+name = "CLINamedArgumentSpec"
 type = "struct"
 features = [
   "eq",
@@ -10,12 +10,15 @@ features = [
 ]
 
 includes = [
-  "<string>",
   "<optional>",
+  "<set>",
+  "<string>",
 ]
 
 src_includes = [
   "utils/fmt/optional.h",
+  "utils/fmt/vector.h",
+  "utils/hash/vector.h",
   "utils/json/optional.h",
 ]
 
@@ -24,8 +27,12 @@ name = "long_flag"
 type = "std::string"
 
 [[fields]]
-name = "short_flag"
-type = "std::optional<char>"
+name = "metavar"
+type = "std::string"
+
+[[fields]]
+name = "choices"
+type = "std::optional<std::vector<std::string>>"
 
 [[fields]]
 name = "description"

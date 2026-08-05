@@ -19,6 +19,18 @@ std::string cli_get_help_message(std::string const &program_name,
     }
   };
 
+  auto render_named_arg = [](CLINamedArgumentSpec const &named_argument_spec) {
+    std::ostringstream oss;
+    oss << "--" << named_argument_spec.long_flag << " ";
+    if (named_argument_spec.choices.has_value()) {
+      oss << ("{" + join_strings(named_argument_spec.choices.value(), ",") +
+              "}");
+    } else {
+      oss << named_argument_spec.metavar;
+    }
+    return oss.str();
+  };
+
   auto render_flag_option_column_key = [](CLIFlagSpec const &flag_spec) {
     std::ostringstream oss;
     if (flag_spec.short_flag.has_value()) {
@@ -31,23 +43,28 @@ std::string cli_get_help_message(std::string const &program_name,
   std::ostringstream oss;
 
   oss << "usage: " << program_name;
-  for (CLIFlagSpec const &flag_spec : cli.flags) {
+  for (CLIFlagSpec const &flag_spec : cli.get_flag_specs()) {
     if (flag_spec.short_flag.has_value()) {
       oss << " [-" << flag_spec.short_flag.value() << "]";
     } else {
       oss << " [--" << flag_spec.long_flag << "]";
     }
   }
+  for (CLINamedArgumentSpec const &named_argument_spec :
+       cli.get_named_argument_specs()) {
+    oss << " [" << render_named_arg(named_argument_spec) << "]";
+  }
   for (CLIPositionalArgumentSpec const &pos_arg_spec :
-       cli.positional_arguments) {
+       cli.get_positional_argument_specs()) {
     oss << " " << render_pos_arg(pos_arg_spec);
   }
 
   oss << std::endl;
 
   std::vector<std::string> all_arg_columns = concat_vectors(std::vector{
-      transform(cli.positional_arguments, render_pos_arg),
-      transform(cli.flags, render_flag_option_column_key),
+      transform(cli.get_positional_argument_specs(), render_pos_arg),
+      transform(cli.get_named_argument_specs(), render_named_arg),
+      transform(cli.get_flag_specs(), render_flag_option_column_key),
   });
   std::vector<size_t> all_arg_column_widths =
       transform(all_arg_columns, [](std::string const &s) { return s.size(); });
@@ -70,13 +87,13 @@ std::string cli_get_help_message(std::string const &program_name,
       }
     };
 
-    if (!cli.positional_arguments.empty()) {
+    if (!cli.get_positional_argument_specs().empty()) {
       oss << std::endl;
       oss << "positional arguments:" << std::endl;
 
-      if (!cli.positional_arguments.empty()) {
+      if (!cli.get_positional_argument_specs().empty()) {
         for (CLIPositionalArgumentSpec const &pos_arg_spec :
-             cli.positional_arguments) {
+             cli.get_positional_argument_specs()) {
           oss << render_column(render_pos_arg(pos_arg_spec),
                                pos_arg_spec.description)
               << std::endl;
@@ -84,13 +101,20 @@ std::string cli_get_help_message(std::string const &program_name,
       }
     }
 
-    if (!cli.flags.empty()) {
+    if (!(cli.get_flag_specs().empty() &&
+          cli.get_named_argument_specs().empty())) {
       oss << std::endl;
       oss << "options:" << std::endl;
 
-      for (CLIFlagSpec const &flag_spec : cli.flags) {
+      for (CLIFlagSpec const &flag_spec : cli.get_flag_specs()) {
         oss << render_column(render_flag_option_column_key(flag_spec),
                              flag_spec.description)
+            << std::endl;
+      }
+      for (CLINamedArgumentSpec const &named_argument_spec :
+           cli.get_named_argument_specs()) {
+        oss << render_column(render_named_arg(named_argument_spec),
+                             named_argument_spec.description)
             << std::endl;
       }
     }
