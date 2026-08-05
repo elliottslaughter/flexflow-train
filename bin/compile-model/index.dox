@@ -1,0 +1,29 @@
+namespace FlexFlow {
+/**
+
+@page compile-model compile-model
+
+\brief Run the model specified by the mapped PCG, encoded as JSON.
+
+The main entry point for the %FlexFlow %Train compiler. The compiler takes a computation graph describing the operations to be performed, an transforms it into a mapped parallel computation graph (PCG) that describes how to do so on a parallel machine.
+
+\verbatim
+$ proj cmake # if you haven't already
+...
+$ proj build
+...
+$ ./build/normal/bin/compile-model/compile-model -h
+\endverbatim
+
+The above should print the help message for `compile-model`.
+
+A typical workflow would involve generating a model (e.g., via \ref export-model-arch), compiling it, and then running (via \ref run-model):
+
+\verbatim
+$ ./build/normal/bin/export-model-arch/export-model-arch split_test > split_test_cg.json
+$ ./build/normal/bin/compile-model/compile-model split_test_cg.json > split_test_mpcg.json
+$ ./build/normal/bin/run-model-arch/run-model-arch split_test_mpcg.json
+\endverbatim
+
+*/
+}
