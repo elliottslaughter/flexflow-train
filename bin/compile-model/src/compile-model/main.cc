@@ -6,6 +6,10 @@
 #include "utils/cli/cli_parse.h"
 #include "utils/cli/cli_parse_result.h"
 #include "utils/cli/cli_spec.h"
+#include "utils/containers/binary_merge_disjoint_maps.h"
+#include "utils/containers/map_from_pairs.h"
+#include "utils/containers/map_values.h"
+#include "utils/containers/transform.h"
 #include <fstream>
 
 using namespace FlexFlow;
@@ -73,9 +77,31 @@ int main(int argc, char **argv) {
 
   MappedParallelComputationGraph mpcg = [&]() {
     if (strategy == "passthrough") {
+      auto mapping_for_pcg_invocation_info =
+          [](ParallelLayerInvocationInfo const &info) {
+            // Everything maps to zero
+            ParallelTensorSpaceCoordinate tensor_coord_zero{
+                0_n, 0_n, FFOrdered<nonnegative_int>{0_n}};
+            MachineSpaceCoordinate machine_coord_zero{0_n, 0_n};
+            OperatorAtomicTaskShardBinding shard_binding{
+                binary_merge_disjoint_maps(
+                    map_values(info.incoming,
+                               [&](ParallelTensorInfo const &) {
+                                 return tensor_coord_zero;
+                               }),
+                    map_values(info.outgoing, [&](ParallelTensorInfo const &) {
+                      return tensor_coord_zero;
+                    }))};
+            return std::pair<parallel_layer_guid_t, MappedOperatorTaskGroup>{
+                info.layer_info.guid,
+                MappedOperatorTaskGroup{{{machine_coord_zero, shard_binding}}},
+            };
+          };
       ParallelComputationGraph pcg = pcg_from_computation_graph(cg);
       std::map<parallel_layer_guid_t, MappedOperatorTaskGroup>
-          mapped_op_task_groups;
+          mapped_op_task_groups =
+              map_from_pairs(transform(pcg_get_invocation_info_set(pcg),
+                                       mapping_for_pcg_invocation_info));
       return mapped_pcg_from_pcg_and_mapped_op_task_groups(
           pcg, mapped_op_task_groups);
     } else if (strategy == "data_parallel") {

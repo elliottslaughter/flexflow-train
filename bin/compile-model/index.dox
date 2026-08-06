@@ -21,8 +21,8 @@ A typical workflow would involve generating a model (e.g., via \ref export-model
 
 \verbatim
 $ ./build/normal/bin/export-model-arch/export-model-arch split_test > split_test_cg.json
-$ ./build/normal/bin/compile-model/compile-model split_test_cg.json > split_test_mpcg.json
-$ ./build/normal/bin/run-model-arch/run-model-arch split_test_mpcg.json
+$ ./build/normal/bin/compile-model/compile-model split_test_cg.json split_test_mpcg.json passthrough
+$ ./build/normal/bin/run-model/run-model split_test_mpcg.json
 \endverbatim
 
 */
