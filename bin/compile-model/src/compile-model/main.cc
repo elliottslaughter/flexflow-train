@@ -29,14 +29,14 @@ int main(int argc, char **argv) {
           std::nullopt,
           "path to write the resulting mapping PCG, encoded as JSON"});
 
-  std::vector<std::string> strategy_options = {"passthrough",
-                                            "data_parallel",
-                                            "unity",
-                                            "mcmc"};
+  std::vector<std::string> strategy_options = {
+      "passthrough", "data_parallel", "unity", "mcmc"};
   CLIArgumentKey key_strategy = cli_add_positional_argument(
       cli,
       CLIPositionalArgumentSpec{
-          "strategy", strategy_options, "compilation strategy for building the mapped PCG"});
+          "strategy",
+          strategy_options,
+          "compilation strategy for building the mapped PCG"});
 
   ASSERT(argc >= 1);
   std::string prog_name = argv[0];
@@ -77,8 +77,7 @@ int main(int argc, char **argv) {
       std::map<parallel_layer_guid_t, MappedOperatorTaskGroup>
           mapped_op_task_groups;
       return mapped_pcg_from_pcg_and_mapped_op_task_groups(
-          pcg,
-          mapped_op_task_groups);
+          pcg, mapped_op_task_groups);
     } else if (strategy == "data_parallel") {
       NOT_IMPLEMENTED();
     } else if (strategy == "unity") {
