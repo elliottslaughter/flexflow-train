@@ -7,4 +7,6 @@ ff_add_executable(
     include/
   DEPS
     compiler
+    kernels
+    local-execution
 )
