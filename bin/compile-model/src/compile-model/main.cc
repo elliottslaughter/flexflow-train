@@ -14,6 +14,36 @@
 
 using namespace FlexFlow;
 
+static std::pair<parallel_layer_guid_t, MappedOperatorTaskGroup>
+    single_device_mapping_from_pcg_invocation_info(
+        ParallelLayerInvocationInfo const &info) {
+  // Everything maps to zero
+  ParallelTensorSpaceCoordinate tensor_coord_zero{
+      0_n, 0_n, FFOrdered<nonnegative_int>{0_n}};
+  MachineSpaceCoordinate machine_coord_zero{0_n, 0_n};
+  OperatorAtomicTaskShardBinding shard_binding{binary_merge_disjoint_maps(
+      map_values(info.incoming,
+                 [&](ParallelTensorInfo const &) { return tensor_coord_zero; }),
+      map_values(info.outgoing, [&](ParallelTensorInfo const &) {
+        return tensor_coord_zero;
+      }))};
+  return std::pair<parallel_layer_guid_t, MappedOperatorTaskGroup>{
+      info.layer_info.guid,
+      MappedOperatorTaskGroup{{{machine_coord_zero, shard_binding}}},
+  };
+}
+
+static MappedParallelComputationGraph
+    lift_cg_to_mpcg_for_single_device(ComputationGraph const &cg) {
+  ParallelComputationGraph pcg = pcg_from_computation_graph(cg);
+  std::map<parallel_layer_guid_t, MappedOperatorTaskGroup>
+      mapped_op_task_groups = map_from_pairs(
+          transform(pcg_get_invocation_info_set(pcg),
+                    single_device_mapping_from_pcg_invocation_info));
+  return mapped_pcg_from_pcg_and_mapped_op_task_groups(pcg,
+                                                       mapped_op_task_groups);
+}
+
 int main(int argc, char **argv) {
   CLISpec cli = empty_cli_spec();
 
@@ -77,33 +107,7 @@ int main(int argc, char **argv) {
 
   MappedParallelComputationGraph mpcg = [&]() {
     if (strategy == "passthrough") {
-      auto mapping_for_pcg_invocation_info =
-          [](ParallelLayerInvocationInfo const &info) {
-            // Everything maps to zero
-            ParallelTensorSpaceCoordinate tensor_coord_zero{
-                0_n, 0_n, FFOrdered<nonnegative_int>{0_n}};
-            MachineSpaceCoordinate machine_coord_zero{0_n, 0_n};
-            OperatorAtomicTaskShardBinding shard_binding{
-                binary_merge_disjoint_maps(
-                    map_values(info.incoming,
-                               [&](ParallelTensorInfo const &) {
-                                 return tensor_coord_zero;
-                               }),
-                    map_values(info.outgoing, [&](ParallelTensorInfo const &) {
-                      return tensor_coord_zero;
-                    }))};
-            return std::pair<parallel_layer_guid_t, MappedOperatorTaskGroup>{
-                info.layer_info.guid,
-                MappedOperatorTaskGroup{{{machine_coord_zero, shard_binding}}},
-            };
-          };
-      ParallelComputationGraph pcg = pcg_from_computation_graph(cg);
-      std::map<parallel_layer_guid_t, MappedOperatorTaskGroup>
-          mapped_op_task_groups =
-              map_from_pairs(transform(pcg_get_invocation_info_set(pcg),
-                                       mapping_for_pcg_invocation_info));
-      return mapped_pcg_from_pcg_and_mapped_op_task_groups(
-          pcg, mapped_op_task_groups);
+      return lift_cg_to_mpcg_for_single_device(cg);
     } else if (strategy == "data_parallel") {
       NOT_IMPLEMENTED();
     } else if (strategy == "unity") {
