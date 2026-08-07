@@ -93,6 +93,13 @@ int main(int argc, char **argv) {
                                          /*workSpaceSize=*/1024 * 1024,
                                          /*allowTensorOpMathConversion=*/true);
 
+        bool has_gpus = []() {
+          FlexFlow::Realm::Machine::ProcessorQuery pq(
+              FlexFlow::Realm::Machine::get_machine());
+          pq.only_kind(FlexFlow::Realm::Processor::Kind::TOC_PROC);
+          return pq.count() > 0;
+        }();
+
         PCGInstance pcg_instance = create_pcg_instance(
             /*ctx=*/ctx,
             /*mpcg=*/mpcg,
@@ -101,7 +108,7 @@ int main(int argc, char **argv) {
             /*input_tensors=*/input_tensors,
             /*profiling_settings=*/ProfilingSettings{0, 0},
             /*device_handle=*/device_handle,
-            /*device_type=*/DeviceType::GPU);
+            /*device_type=*/has_gpus ? DeviceType::GPU : DeviceType::CPU);
 
         // begin training loop
         int num_epochs = 5;
