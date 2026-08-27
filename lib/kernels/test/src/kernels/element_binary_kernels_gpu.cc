@@ -9,7 +9,7 @@
 
 using namespace ::FlexFlow;
 
-TEST_SUITE(FF_TEST_SUITE) {
+TEST_SUITE(FF_CUDA_TEST_SUITE) {
   TEST_CASE("element_binary_gpu_forward_kernel") {
     SUBCASE("add") {
       ManagedPerDeviceFFHandle managed_handle = initialize_single_gpu_handle(
