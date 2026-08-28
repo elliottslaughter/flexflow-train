@@ -44,8 +44,9 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
           },
           allocator);
 
+      // Intentionally randomize this tensor so we can be confident we never read it
       GenericTensorAccessorW result =
-          create_zero_filled_accessor_w(lhs.shape, allocator);
+          create_random_filled_accessor_w(lhs.shape, allocator);
 
       ElementBinaryPerDeviceState per_device_state =
           element_binary_gpu_init_kernel(/*attrs=*/attrs,
@@ -111,11 +112,11 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
           },
           allocator);
 
-      GenericTensorAccessorW lhs_grad =
-          allocator.allocate_tensor(get_tensor_shape_for_accessor_r(lhs));
+      GenericTensorAccessorW lhs_grad = create_zero_filled_accessor_w(
+          get_tensor_shape_for_accessor_r(lhs), allocator);
 
-      GenericTensorAccessorW rhs_grad =
-          allocator.allocate_tensor(get_tensor_shape_for_accessor_r(rhs));
+      GenericTensorAccessorW rhs_grad = create_zero_filled_accessor_w(
+          get_tensor_shape_for_accessor_r(rhs), allocator);
 
       GenericTensorAccessorR output = create_2d_accessor_r_with_contents<float>(
           {
