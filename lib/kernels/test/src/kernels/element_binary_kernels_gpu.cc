@@ -174,14 +174,11 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
               },
               allocator);
 
-      float epsilon = 1e-20;
-      CHECK_MESSAGE(
-          accessors_within_epsilon(lhs_grad, correct_lhs_grad, epsilon),
-          check_kv("lhs_grad", format_accessor_w_contents(lhs_grad)));
+      CHECK_MESSAGE(accessors_are_equal(lhs_grad, correct_lhs_grad),
+                    check_kv("lhs_grad", format_accessor_w_contents(lhs_grad)));
 
-      CHECK_MESSAGE(
-          accessors_within_epsilon(rhs_grad, correct_rhs_grad, epsilon),
-          check_kv("rhs_grad", format_accessor_w_contents(rhs_grad)));
+      CHECK_MESSAGE(accessors_are_equal(rhs_grad, correct_rhs_grad),
+                    check_kv("rhs_grad", format_accessor_w_contents(rhs_grad)));
     }
   }
 }
