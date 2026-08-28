@@ -3,7 +3,6 @@
 #include "kernels/create_accessor_with_contents.h"
 #include "kernels/format_accessor_contents.h"
 #include "kernels/local_cpu_allocator.h"
-#include "op-attrs/ops/element_binary.h"
 #include "test/utils/doctest/check_kv.h"
 #include <doctest/doctest.h>
 
