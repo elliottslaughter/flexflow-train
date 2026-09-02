@@ -29,35 +29,57 @@ TEST_SUITE(FF_TEST_SUITE) {
     }
 
     SUBCASE("L type is not the same as R type") {
-      bidict<int, std::string> dict;
-      dict.equate(1, "one");
-      dict.equate(2, "two");
+      bidict<int, std::string> bd;
+      bd.equate(1, "one");
+      bd.equate(2, "two");
 
       SUBCASE("bidict::contains_l") {
-        CHECK(dict.contains_l(1));
-        CHECK_FALSE(dict.contains_l(3));
+        CHECK(bd.contains_l(1));
+        CHECK_FALSE(bd.contains_l(3));
       }
 
       SUBCASE("bidict::contains_r") {
-        CHECK(dict.contains_r("one"));
-        CHECK_FALSE(dict.contains_r("three"));
+        CHECK(bd.contains_r("one"));
+        CHECK_FALSE(bd.contains_r("three"));
       }
     }
 
-    SUBCASE("bidict::equate") {
-      CHECK(dict.at_l(1) == "one");
-      CHECK(dict.at_r("one") == 1);
-      CHECK(dict.at_l(2) == "two");
-      CHECK(dict.at_r("two") == 2);
+    SUBCASE("bidict::bidict(std::initializer_list<std::pair<L, R>>)") {
+      bidict<int, std::string> bd{{1, "one"}, {2, "two"}};
+      CHECK(bd.contains_l(1));
+      CHECK_FALSE(bd.contains_l(3));
+
+      SUBCASE("invalid mapping") {
+        CHECK_THROWS(bidict<int, std::string>{{1, "one"}, {2, "one"}});
+      }
     }
 
-    SUBCASE("bidict::equate_strict") {
-      CHECK_THROWS(dict.equate_strict(1, "three"));
-      CHECK_THROWS(dict.equate_strict(3, "two"));
+    SUBCASE("bidict::bidict(InputIt)") {
+      std::vector<std::pair<int, std::string>> pairs = {{1, "one"}, {2, "two"}};
+      bidict<int, std::string> bd{pairs.begin(), pairs.end()};
+      CHECK(bd.contains_l(1));
+      CHECK_FALSE(bd.contains_l(3));
 
-      dict.equate_strict(3, "three");
-      CHECK(dict.at_l(3) == "three");
-      CHECK(dict.at_r("three") == 3);
+      SUBCASE("invalid mapping") {
+        std::vector<std::pair<int, std::string>> bad_pairs = {{1, "one"},
+                                                              {2, "one"}};
+        CHECK_THROWS(
+            bidict<int, std::string>{bad_pairs.begin(), bad_pairs.end()});
+      }
+    }
+
+    SUBCASE("bidict::bidict(std::map<L, R> const &, std::map<R, L> const &)") {
+      std::map<int, std::string> fwd = {{1, "one"}, {2, "two"}};
+      std::map<std::string, int> bwd = {{"one", 1}, {"two", 2}};
+      bidict<int, std::string> bd{fwd, bwd};
+      CHECK(bd.contains_l(1));
+      CHECK_FALSE(bd.contains_l(3));
+
+      SUBCASE("invalid mapping") {
+        std::map<int, std::string> bad_fwd = {{1, "one"}, {2, "one"}};
+        std::map<std::string, int> bad_bwd = {{"one", 1}};
+        CHECK_THROWS(bidict<int, std::string>{bad_fwd, bad_bwd});
+      }
     }
 
     SUBCASE("bidict::erase_l") {
@@ -74,20 +96,76 @@ TEST_SUITE(FF_TEST_SUITE) {
       CHECK(dict.at_l(2) == "two");
     }
 
-    SUBCASE("bidict::reversed") {
-      bidict<std::string, int> reversed_dict = dict.reversed();
-      CHECK(reversed_dict.at_l("one") == 1);
-      CHECK(reversed_dict.at_r(2) == "two");
+    SUBCASE("bidict::equate") {
+      CHECK(dict.at_l(1) == "one");
+      CHECK(dict.at_r("one") == 1);
+      CHECK(dict.at_l(2) == "two");
+      CHECK(dict.at_r("two") == 2);
+
+      dict.equate(1, "three");
+      CHECK(dict.at_l(1) == "three");
+      CHECK(dict.at_r("three") == 1);
+      CHECK_THROWS(dict.at_r("one"));
+      CHECK(dict.at_l(2) == "two");
+      CHECK(dict.at_r("two") == 2);
+
+      dict.equate(3, "three");
+      CHECK(dict.at_l(3) == "three");
+      CHECK(dict.at_r("three") == 3);
+      CHECK_THROWS(dict.at_l(1));
+      CHECK(dict.at_l(2) == "two");
+      CHECK(dict.at_r("two") == 2);
+    }
+
+    SUBCASE("bidict::equate_strict") {
+      CHECK_THROWS(dict.equate_strict(1, "three"));
+      CHECK_THROWS(dict.equate_strict(3, "two"));
+
+      dict.equate_strict(3, "three");
+      CHECK(dict.at_l(3) == "three");
+      CHECK(dict.at_r("three") == 3);
+    }
+
+    SUBCASE("bidict::operator==") {
+      bidict<int, std::string> bd{{1, "one"}, {2, "two"}};
+      bidict<int, std::string> bd2{{1, "one"}, {3, "three"}};
+      CHECK(dict == bd);
+      CHECK_FALSE(dict == bd2);
+    }
+
+    SUBCASE("bidict::operator!=") {
+      bidict<int, std::string> bd{{1, "one"}, {2, "two"}};
+      bidict<int, std::string> bd2{{1, "one"}, {3, "three"}};
+      CHECK_FALSE(dict != bd);
+      CHECK(dict != bd2);
+    }
+
+    SUBCASE("bidict::at_l") {
+      CHECK(dict.at_l(1) == "one");
+      CHECK_THROWS(dict.at_l(3));
+    }
+
+    SUBCASE("bidict::at_r") {
+      CHECK(dict.at_r("one") == 1);
+      CHECK_THROWS(dict.at_r("three"));
+    }
+
+    SUBCASE("bidict::left_values") {
+      CHECK(dict.left_values() == std::set<int>{1, 2});
+    }
+
+    SUBCASE("bidict::right_values") {
+      CHECK(dict.right_values() == std::set<std::string>{"one", "two"});
     }
 
     SUBCASE("bidict::size") {
       CHECK(dict.size() == 2);
     }
 
-    SUBCASE("implicitly convert to std::map") {
-      std::map<int, std::string> res = dict;
-      std::map<int, std::string> expected = {{1, "one"}, {2, "two"}};
-      CHECK(res == expected);
+    SUBCASE("bidict::empty") {
+      CHECK_FALSE(dict.empty());
+      bidict<int, std::string> empty{};
+      CHECK(empty.empty());
     }
 
     SUBCASE("bidict::begin") {
@@ -100,6 +178,18 @@ TEST_SUITE(FF_TEST_SUITE) {
       auto it = dict.end();
 
       CHECK_WITHOUT_STRINGIFY(it == dict.end());
+    }
+
+    SUBCASE("bidict::reversed") {
+      bidict<std::string, int> reversed_dict = dict.reversed();
+      CHECK(reversed_dict.at_l("one") == 1);
+      CHECK(reversed_dict.at_r(2) == "two");
+    }
+
+    SUBCASE("implicitly convert to std::map") {
+      std::map<int, std::string> res = dict;
+      std::map<int, std::string> expected = {{1, "one"}, {2, "two"}};
+      CHECK(res == expected);
     }
 
     SUBCASE("fmt::to_string(bidict<int, std::string>)") {
