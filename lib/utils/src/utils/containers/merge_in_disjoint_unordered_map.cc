@@ -7,6 +7,6 @@ using K = value_type<0>;
 using V = value_type<1>;
 
 template void merge_in_disjoint_unordered_map(std::unordered_map<K, V> const &,
-                                     std::unordered_map<K, V> &);
+                                              std::unordered_map<K, V> &);
 
 } // namespace FlexFlow
