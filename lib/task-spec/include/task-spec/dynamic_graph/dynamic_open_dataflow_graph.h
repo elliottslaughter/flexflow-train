@@ -95,6 +95,30 @@ std::set<InternalDynamicSlotSite>
     dynamic_graph_find_sinks_of_value(DynamicOpenDataflowGraph const &,
                                       DynamicValueAttrs const &);
 
+/**
+ * @brief Compute the source slot site of every value in the graph in a
+ * single pass.
+ *
+ * @details Returns the same result as calling \ref
+ * dynamic_graph_find_source_of_value once per value, but builds the slot
+ * site index once rather than once per value. Prefer this over calling
+ * \ref dynamic_graph_find_source_of_value in a loop over values.
+ */
+std::map<dynamic_value_id_t, DynamicSlotSite>
+    dynamic_graph_get_source_of_each_value(DynamicOpenDataflowGraph const &);
+
+/**
+ * @brief Compute the sink slot sites of every value in the graph in a
+ * single pass.
+ *
+ * @details Returns the same result as calling \ref
+ * dynamic_graph_find_sinks_of_value once per value, but builds the slot
+ * site index once rather than once per value. Values with no sinks are
+ * absent from the result rather than mapping to an empty set.
+ */
+std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>>
+    dynamic_graph_get_sinks_of_each_value(DynamicOpenDataflowGraph const &);
+
 DynamicValueAttrs
     dynamic_value_attrs_for_slot_site(DynamicOpenDataflowGraph const &,
                                       DynamicSlotSite const &);

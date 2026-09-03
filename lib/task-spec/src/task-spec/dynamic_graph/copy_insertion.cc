@@ -31,6 +31,7 @@
 #include "utils/containers/set_difference.h"
 #include "utils/containers/set_intersection.h"
 #include "utils/containers/transform.h"
+#include "utils/containers/try_at.h"
 #include "utils/containers/values.h"
 #include "utils/containers/zip_values_strict_with.h"
 #include "utils/optional.h"
@@ -340,6 +341,19 @@ std::map<InternalDynamicSlotSite, ParallelTensorMapping>
   std::set<InternalDynamicSlotSite> missing_mappings =
       set_minus(all_internal_slot_sites, keys(resolved_mappings));
 
+  // hoisted out of the per-slot-site loop below: dynamic_graph_find_*_of_slot_site
+  // otherwise rebuilds these indices once per slot site
+  std::map<dynamic_value_id_t, DynamicSlotSite> source_by_value =
+      dynamic_graph_get_source_of_each_value(g);
+  std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>>
+      sinks_by_value = dynamic_graph_get_sinks_of_each_value(g);
+
+  auto value_id_of_slot_site =
+      [&](InternalDynamicSlotSite const &slot_site) -> dynamic_value_id_t {
+    return dynamic_graph_get_id_for_value(
+        g, dynamic_value_attrs_for_slot_site(g, DynamicSlotSite{slot_site}));
+  };
+
   auto get_mapping_for_slot_site_from_adjacent_values =
       [&](InternalDynamicSlotSite const &slot_site) -> ParallelTensorMapping {
     DynamicNodeInvocation invocation =
@@ -354,7 +368,8 @@ std::map<InternalDynamicSlotSite, ParallelTensorMapping>
       ASSERT(slot_site.direction == TensorDirection::OUTPUT);
 
       InternalDynamicSlotSite slot_site_sink =
-          get_only(dynamic_graph_find_sinks_of_slot_site(g, slot_site));
+          get_only(try_at(sinks_by_value, value_id_of_slot_site(slot_site))
+                       .value_or(std::set<InternalDynamicSlotSite>{}));
 
       ASSERT(contains_key(resolved_mappings, slot_site_sink));
 
@@ -365,7 +380,7 @@ std::map<InternalDynamicSlotSite, ParallelTensorMapping>
       ASSERT(slot_site.direction == TensorDirection::INCOMING);
 
       InternalDynamicSlotSite slot_site_src =
-          dynamic_graph_find_source_of_slot_site(g, slot_site)
+          source_by_value.at(value_id_of_slot_site(slot_site))
               .require_internal();
 
       ASSERT(contains_key(resolved_mappings, slot_site_src));
@@ -385,12 +400,21 @@ std::set<DynamicValueCopyInfo>
   std::map<InternalDynamicSlotSite, ParallelTensorMapping>
       fully_resolved_tensor_mappings = resolve_tensor_mappings(g);
 
+  // hoisted out of the per-value loop below: these indices are otherwise
+  // rebuilt once per value
+  std::map<dynamic_value_id_t, DynamicSlotSite> source_by_value =
+      dynamic_graph_get_source_of_each_value(g);
+  std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>>
+      sinks_by_value = dynamic_graph_get_sinks_of_each_value(g);
+
   std::set<DynamicValueCopyInfo> all_copies = flatmap(
       set_of(get_dynamic_values(g)),
       [&](DynamicValueAttrs const &v) -> std::set<DynamicValueCopyInfo> {
-        DynamicSlotSite src_site = dynamic_graph_find_source_of_value(g, v);
+        dynamic_value_id_t value_id = dynamic_graph_get_id_for_value(g, v);
+        DynamicSlotSite src_site = source_by_value.at(value_id);
         std::set<InternalDynamicSlotSite> sinks =
-            dynamic_graph_find_sinks_of_value(g, v);
+            try_at(sinks_by_value, value_id)
+                .value_or(std::set<InternalDynamicSlotSite>{});
 
         return copies_for_value(
             v, src_site, sinks, fully_resolved_tensor_mappings);
