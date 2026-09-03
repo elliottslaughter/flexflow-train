@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
             /*optimizer=*/optimizer_attrs,
             /*loss=*/std::nullopt,
             /*input_tensors=*/input_tensors,
-            /*profiling_settings=*/ProfilingSettings{0, 0},
+            /*profiling_settings=*/ProfilingSettings{0, 1},
             /*device_handle=*/device_handle,
             /*device_type=*/DeviceType::GPU);
 
