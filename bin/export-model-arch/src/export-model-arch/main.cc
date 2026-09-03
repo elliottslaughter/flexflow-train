@@ -80,7 +80,7 @@ tl::expected<ComputationGraph, std::string>
     return get_single_operator_computation_graph();
   } else if (model_name == "yolov10x") {
     return get_yolov10_computation_graph(get_yolov10x_config(
-        /*batch_size=*/8_p,
+        /*batch_size=*/6_p,
         /*end2end=*/false));
   } else {
     return tl::unexpected(fmt::format("Unknown model name: {}", model_name));
