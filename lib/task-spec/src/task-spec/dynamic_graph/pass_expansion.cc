@@ -92,16 +92,32 @@ void require_graph_is_ready_for_pass_expansion(
       g, require_invocation_is_ready_for_pass_expansion);
 }
 
-std::set<DynamicValueAttrs>
+/**
+ * @brief Look up the sinks of \p v in a precomputed sink index, matching
+ * the empty-set-if-absent behavior of dynamic_graph_find_sinks_of_value.
+ */
+static std::set<InternalDynamicSlotSite> lookup_sinks_of_value(
+    DynamicOpenDataflowGraph const &g,
+    std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>> const
+        &sinks_by_value,
+    DynamicValueAttrs const &v) {
+  return try_at(sinks_by_value, dynamic_graph_get_id_for_value(g, v))
+      .value_or(std::set<InternalDynamicSlotSite>{});
+}
+
+static std::set<DynamicValueAttrs>
     determine_intermediate_values_needed_to_compute_gradients_of_value(
-        DynamicOpenDataflowGraph const &g, DynamicValueAttrs const &val) {
+        DynamicOpenDataflowGraph const &g,
+        std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>> const
+            &sinks_by_value,
+        DynamicValueAttrs const &val) {
   auto get_values_immediately_needed_to_compute_gradients_of_needed =
       [&](std::set<DynamicValueAttrs> const &needed)
       -> std::set<DynamicValueAttrs> {
     std::set<DynamicValueAttrs> additional = flatmap(
         needed, [&](DynamicValueAttrs const &v) -> std::set<DynamicValueAttrs> {
           std::set<InternalDynamicSlotSite> sinks =
-              dynamic_graph_find_sinks_of_value(g, v);
+              lookup_sinks_of_value(g, sinks_by_value, v);
 
           return flatmap(sinks,
                          [&](InternalDynamicSlotSite const &sink)
@@ -126,11 +142,26 @@ std::set<DynamicValueAttrs>
 }
 
 std::set<DynamicValueAttrs>
+    determine_intermediate_values_needed_to_compute_gradients_of_value(
+        DynamicOpenDataflowGraph const &g, DynamicValueAttrs const &val) {
+  return determine_intermediate_values_needed_to_compute_gradients_of_value(
+      g, dynamic_graph_get_sinks_of_each_value(g), val);
+}
+
+std::set<DynamicValueAttrs>
     determine_intermediate_values_needed_for_gradient_computation(
         DynamicOpenDataflowGraph const &g) {
+  // hoisted out of the per-value loops below: these indices are otherwise
+  // rebuilt once per value, which dominates pass expansion
+  std::map<dynamic_value_id_t, DynamicSlotSite> source_by_value =
+      dynamic_graph_get_source_of_each_value(g);
+  std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>>
+      sinks_by_value = dynamic_graph_get_sinks_of_each_value(g);
+
   auto value_is_fundamentally_required =
       [&](DynamicValueAttrs const &v) -> bool {
-    DynamicSlotSite source = dynamic_graph_find_source_of_value(g, v);
+    DynamicSlotSite source =
+        source_by_value.at(dynamic_graph_get_id_for_value(g, v));
 
     if (source.is_external()) {
       return true;
@@ -165,7 +196,7 @@ std::set<DynamicValueAttrs>
       [&](DynamicValueAttrs const &fundamentally_required_value)
           -> std::set<DynamicValueAttrs> {
         return determine_intermediate_values_needed_to_compute_gradients_of_value(
-            g, fundamentally_required_value);
+            g, sinks_by_value, fundamentally_required_value);
       });
 
   return required_values;
@@ -177,9 +208,12 @@ std::set<dynamic_invocation_id_t>
   std::set<DynamicValueAttrs> required_values =
       determine_intermediate_values_needed_for_gradient_computation(g);
 
+  std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>>
+      sinks_by_value = dynamic_graph_get_sinks_of_each_value(g);
+
   auto get_sink_invocations_for_value =
       [&](DynamicValueAttrs const &v) -> std::set<dynamic_invocation_id_t> {
-    return transform(dynamic_graph_find_sinks_of_value(g, v),
+    return transform(lookup_sinks_of_value(g, sinks_by_value, v),
                      [&](InternalDynamicSlotSite const &sink_site)
                          -> dynamic_invocation_id_t {
                        ASSERT(sink_site.direction == TensorDirection::INCOMING);
@@ -195,9 +229,11 @@ std::set<DynamicValueAttrs> determine_values_requiring_gradient_reduction(
     std::set<dynamic_invocation_id_t> const &in_bwd_pass) {
   std::set<DynamicValueAttrs> internal_values =
       dynamic_graph_get_internal_values(g);
+  std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>>
+      sinks_by_value = dynamic_graph_get_sinks_of_each_value(g);
   return filter(internal_values, [&](DynamicValueAttrs const &v) {
     std::set<InternalDynamicSlotSite> sinks =
-        dynamic_graph_find_sinks_of_value(g, v);
+        lookup_sinks_of_value(g, sinks_by_value, v);
     if (sinks.size() <= 1) {
       return false;
     }
@@ -225,10 +261,13 @@ std::map<DynamicValueAttrs, std::map<dynamic_invocation_id_t, subgradient_id_t>>
     compute_subgradient_ids(DynamicOpenDataflowGraph const &g,
                             std::set<DynamicValueAttrs> const
                                 &values_requiring_gradient_reduction) {
+  std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>>
+      sinks_by_value = dynamic_graph_get_sinks_of_each_value(g);
+
   return generate_map(
       values_requiring_gradient_reduction, [&](DynamicValueAttrs const &v) {
         return assign_subgradient_ids(
-            transform(dynamic_graph_find_sinks_of_value(g, v),
+            transform(lookup_sinks_of_value(g, sinks_by_value, v),
                       [](InternalDynamicSlotSite const &sink_site) {
                         return sink_site.invocation_id;
                       }));
