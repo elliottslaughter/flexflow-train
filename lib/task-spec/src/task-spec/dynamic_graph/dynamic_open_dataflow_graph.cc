@@ -13,6 +13,7 @@
 #include "utils/containers/at_idx.h"
 #include "utils/containers/concat_vectors.h"
 #include "utils/containers/contains_duplicates.h"
+#include "utils/containers/contains_key.h"
 #include "utils/containers/contains_value.h"
 #include "utils/containers/enumerate.h"
 #include "utils/containers/filter_values.h"
@@ -290,6 +291,60 @@ std::set<DynamicGraphEdge> get_dynamic_graph_edges_outgoing_from_invocation(
               return dynamic_graph_edge_from_slot_sites(src, sink);
             });
       });
+}
+
+std::map<dynamic_value_id_t, DynamicSlotSite>
+    dynamic_graph_get_source_of_each_value(DynamicOpenDataflowGraph const &g) {
+  std::map<dynamic_value_id_t, DynamicSlotSite> result;
+
+  for (DynamicSlotSite const &s : get_dynamic_slot_sites(g)) {
+    // mirrors the predicate used by dynamic_graph_find_source_of_value
+    std::optional<dynamic_value_id_t> produced_value =
+        s.visit<std::optional<dynamic_value_id_t>>(overload{
+            [&](InternalDynamicSlotSite const &internal_slot_site)
+                -> std::optional<dynamic_value_id_t> {
+              if (internal_slot_site.direction != TensorDirection::OUTPUT) {
+                return std::nullopt;
+              }
+              return dynamic_graph_get_id_for_value(
+                  g, dynamic_value_attrs_for_slot_site(g, s));
+            },
+            [&](ExternalDynamicSlotSite const &external_slot_site)
+                -> std::optional<dynamic_value_id_t> {
+              return dynamic_value_id_t{external_slot_site.value_id};
+            },
+        });
+
+    if (!produced_value.has_value()) {
+      continue;
+    }
+
+    // dynamic_graph_find_source_of_value requires exactly one source per
+    // value (via get_only), so a duplicate here indicates an invalid graph
+    ASSERT(!contains_key(result, produced_value.value()));
+    result.insert({produced_value.value(), s});
+  }
+
+  return result;
+}
+
+std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>>
+    dynamic_graph_get_sinks_of_each_value(DynamicOpenDataflowGraph const &g) {
+  std::map<dynamic_value_id_t, std::set<InternalDynamicSlotSite>> result;
+
+  for (InternalDynamicSlotSite const &s : get_internal_dynamic_slot_sites(g)) {
+    // mirrors the predicate used by dynamic_graph_find_sinks_of_value
+    if (s.direction != TensorDirection::INCOMING) {
+      continue;
+    }
+
+    dynamic_value_id_t value_id = dynamic_graph_get_id_for_value(
+        g, dynamic_value_attrs_for_slot_site(g, DynamicSlotSite{s}));
+
+    result[value_id].insert(s);
+  }
+
+  return result;
 }
 
 DynamicValueAttrs
