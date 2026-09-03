@@ -25,8 +25,9 @@ TEST_SUITE(FF_TEST_SUITE) {
           },
           cpu_allocator);
 
+      // Intentionally randomize this tensor so we can be confident we never read it
       GenericTensorAccessorW result =
-          create_zero_filled_accessor_w(input.shape, cpu_allocator);
+          create_random_filled_accessor_w(input.shape, cpu_allocator);
 
       element_unary_cpu_forward_kernel(
           /*attrs=*/attrs,
@@ -63,8 +64,9 @@ TEST_SUITE(FF_TEST_SUITE) {
           },
           cpu_allocator);
 
-      GenericTensorAccessorW input_grad =
-          cpu_allocator.allocate_tensor(get_tensor_shape_for_accessor_r(input));
+      // Intentionally randomize this tensor so we can be confident we never read it
+      GenericTensorAccessorW input_grad = create_random_filled_accessor_w(
+          get_tensor_shape_for_accessor_r(input), cpu_allocator);
 
       GenericTensorAccessorR output = create_2d_accessor_r_with_contents<float>(
           {

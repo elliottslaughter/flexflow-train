@@ -48,17 +48,20 @@ option(FF_BUILD_SUBSTITUTION_TOOL "build substitution conversion tool" OFF)
 option(FF_BUILD_VISUALIZATION_TOOL "build substitution visualization tool" ON)
 option(FF_BUILD_SP_IZATION_BENCHMARKING "build sp-ization benchmarking" ON)
 option(FF_BUILD_ARG_PARSER "build command line argument parser" OFF)
+option(FF_BUILD_BIN_COMPILE_MODEL "build compile-model binary" ON)
 option(FF_BUILD_BIN_EXPORT_MODEL_ARCH "build export-model-arch utility" ON)
 option(FF_BUILD_BIN_RUN_MODEL "build run-model binary" ON)
 
-include(cuda)
-include(cudnn)
-include(nccl)
 if (FF_USE_CODE_COVERAGE)
   include(CodeCoverage)
   append_coverage_compiler_flags()
 endif()
 # set_property(CACHE FF_GPU_BACKEND PROPERTY STRINGS ${FF_GPU_BACKENDS})
+
+# Load after CodeCoverage because CodeCoverage blows up on NVCC compiler
+include(cuda)
+include(cudnn)
+include(nccl)
 
 include(json)
 include(expected)

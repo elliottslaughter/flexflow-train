@@ -45,6 +45,7 @@ DynamicOpenDataflowGraph
                   /*tensor_guid=*/dynamic_tensor_guid_t{tensor},
                   /*parallel_tensor_shape=*/lift_to_parallel(attrs.shape),
                   /*create_grad=*/(attrs.create_grad == CreateGrad::YES),
+                  /*subgradient_id=*/std::nullopt,
                   /*shard_coord=*/std::nullopt,
                   /*mapping=*/std::nullopt,
                   /*accessor=*/std::nullopt,
@@ -67,6 +68,7 @@ DynamicOpenDataflowGraph
                   /*tensor_guid=*/dynamic_tensor_guid_t{tensor},
                   /*parallel_tensor_shape=*/lift_to_parallel(attrs.shape),
                   /*create_grad=*/(attrs.create_grad == CreateGrad::YES),
+                  /*subgradient_id=*/std::nullopt,
                   /*shard_coord=*/std::nullopt,
                   /*mapping=*/std::nullopt,
                   /*accessor=*/std::nullopt,
@@ -78,7 +80,10 @@ DynamicOpenDataflowGraph
     result.invocations.emplace(result_inputs, result_attrs, result_outputs);
   }
 
-  return result;
+  // note: invocation ids must be computed before value ids, as computing
+  // value ids requires looking up invocation ids
+  return compute_value_ids_for_dynamic_open_dataflow_graph(
+      compute_invocation_ids_for_dynamic_open_dataflow_graph(result));
 }
 
 } // namespace FlexFlow

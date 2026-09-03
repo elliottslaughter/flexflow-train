@@ -40,16 +40,29 @@ static bool use_scalar(OperatorType op_type) {
     case OperatorType::SCALAR_SUB:
     case OperatorType::SCALAR_TRUE_DIV:
     case OperatorType::POW:
+    case OperatorType::SILU:
       return true;
     default:
       return false;
   }
 }
 
-static ElementUnaryPerDeviceState
-    element_unary_gpu_init_kernel(TensorShape const &input_shape,
-                                  TensorShape const &output_shape,
-                                  OperatorType op_type) {
+// SILU's scalar (beta) is optional and defaults to 1, matching the CPU
+// kernel. The other scalar operators require a scalar.
+static float require_scalar(OperatorType op_type,
+                            std::optional<float> const &scalar) {
+  if (op_type == OperatorType::SILU) {
+    return scalar.value_or(1.0f);
+  }
+
+  ASSERT(scalar.has_value(), op_type);
+  return scalar.value();
+}
+
+ElementUnaryPerDeviceState
+    element_unary_gpu_init_kernel(ElementUnaryAttrs const &attrs,
+                                  TensorShape const &input_shape,
+                                  TensorShape const &output_shape) {
 
   ffTensorDescriptor_t inputTensor;
   ffTensorDescriptor_t outputTensor;
@@ -59,9 +72,9 @@ static ElementUnaryPerDeviceState
   checkCUDNN(cudnnCreateTensorDescriptor(&outputTensor));
   checkCUDNN(cudnnCreateActivationDescriptor(&actiDesc));
 
-  if (use_cudnn(op_type)) {
+  if (use_cudnn(get_op_type(attrs))) {
     cudnnActivationMode_t mode;
-    switch (op_type) {
+    switch (get_op_type(attrs)) {
       case OperatorType::SIGMOID:
         mode = CUDNN_ACTIVATION_SIGMOID;
         break;
@@ -92,14 +105,6 @@ static ElementUnaryPerDeviceState
   };
 }
 
-ElementUnaryPerDeviceState
-    element_unary_gpu_init_kernel(TensorShape const &input_shape,
-                                  TensorShape const &output_shape,
-                                  ElementUnaryAttrs const &attrs) {
-  return element_unary_gpu_init_kernel(
-      input_shape, output_shape, get_op_type(attrs));
-}
-
 template <typename T>
 __global__ void elewise_scalar_unary_forward_kernel(
     coord_t volume, T scalar, OperatorType type, T const *in, T *out) {
@@ -123,6 +128,10 @@ __global__ void elewise_scalar_unary_forward_kernel(
       }
       case OperatorType::POW: {
         out[i] = (T)(powf(in[i], scalar));
+        break;
+      }
+      case OperatorType::SILU: {
+        out[i] = (T)(in[i] / (1.0f + expf(-1.0f * scalar * in[i])));
         break;
       }
       default:
@@ -199,6 +208,13 @@ __global__ void elewise_scalar_unary_backward_kernel(coord_t volume,
             (T)(output_grad[i] * scalar * powf(input[i], scalar - 1));
         break;
       }
+      case OperatorType::SILU: {
+        float e_to_bx = expf(scalar * input[i]);
+        input_grad[i] += (T)(output_grad[i] *
+                             (e_to_bx * (scalar * input[i] + e_to_bx + 1.0f)) /
+                             ((e_to_bx + 1.0f) * (e_to_bx + 1.0f)));
+        break;
+      }
       default:
         assert(false);
     }
@@ -252,10 +268,10 @@ __global__ void elewise_unary_backward_kernel(coord_t volume,
 template <DataType T>
 struct ForwardKernel {
   void operator()(ffStream_t stream,
+                  PerDeviceFFHandle const &handle,
                   ElementUnaryPerDeviceState const &m,
                   OperatorType op_type,
                   std::optional<float> scalar,
-                  PerDeviceFFHandle const &handle,
                   GenericTensorAccessorR const &input,
                   GenericTensorAccessorW const &output) const {
     checkCUDNN(cudnnSetStream(handle.dnn, stream));
@@ -274,11 +290,10 @@ struct ForwardKernel {
                                         m.outputTensor,
                                         output.get<T>()));
     } else if (use_scalar(op_type)) {
-      assert(scalar.has_value());
       elewise_scalar_unary_forward_kernel<real_type_t<T>>
           <<<GET_BLOCKS(num_elements), CUDA_NUM_THREADS, 0, stream>>>(
               num_elements,
-              static_cast<real_type_t<T>>(scalar.value()),
+              static_cast<real_type_t<T>>(require_scalar(op_type, scalar)),
               op_type,
               input.get<T>(),
               output.get<T>());
@@ -293,10 +308,10 @@ struct ForwardKernel {
 template <DataType T>
 struct BackwardKernel {
   void operator()(ffStream_t stream,
+                  PerDeviceFFHandle const &handle,
                   ElementUnaryPerDeviceState const &m,
                   OperatorType op_type,
                   std::optional<float> scalar,
-                  PerDeviceFFHandle const &handle,
                   GenericTensorAccessorR const &output,
                   GenericTensorAccessorR const &output_grad,
                   GenericTensorAccessorR const &input,
@@ -320,11 +335,10 @@ struct BackwardKernel {
                                          m.inputTensor,
                                          input_grad.get<T>()));
     } else if (use_scalar(op_type)) {
-      assert(scalar.has_value());
       elewise_scalar_unary_backward_kernel<real_type_t<T>>
           <<<GET_BLOCKS(num_elements), CUDA_NUM_THREADS, 0, stream>>>(
               num_elements,
-              static_cast<real_type_t<T>>(scalar.value()),
+              static_cast<real_type_t<T>>(require_scalar(op_type, scalar)),
               op_type,
               output.get<T>(),
               output_grad.get<T>(),
@@ -345,36 +359,36 @@ struct BackwardKernel {
 
 void element_unary_gpu_forward_kernel(
     ffStream_t stream,
-    ElementUnaryPerDeviceState const &device_state,
-    ElementUnaryAttrs const &attrs,
     PerDeviceFFHandle const &handle,
+    ElementUnaryPerDeviceState const &per_device_state,
+    ElementUnaryAttrs const &attrs,
     GenericTensorAccessorR const &input,
     GenericTensorAccessorW const &output) {
   DataTypeDispatch1<ForwardKernel>{}(input.shape.data_type,
                                      stream,
-                                     device_state,
+                                     handle,
+                                     per_device_state,
                                      get_op_type(attrs),
                                      attrs.scalar,
-                                     handle,
                                      input,
                                      output);
 }
 
 void element_unary_gpu_backward_kernel(
     ffStream_t stream,
-    ElementUnaryPerDeviceState const &device_state,
-    ElementUnaryAttrs const &attrs,
     PerDeviceFFHandle const &handle,
+    ElementUnaryPerDeviceState const &per_device_state,
+    ElementUnaryAttrs const &attrs,
     GenericTensorAccessorR const &output,
     GenericTensorAccessorR const &output_grad,
     GenericTensorAccessorR const &input,
     GenericTensorAccessorW const &input_grad) {
   DataTypeDispatch1<BackwardKernel>{}(input.shape.data_type,
                                       stream,
-                                      device_state,
+                                      handle,
+                                      per_device_state,
                                       get_op_type(attrs),
                                       attrs.scalar,
-                                      handle,
                                       output,
                                       output_grad,
                                       input,
