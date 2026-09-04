@@ -27,8 +27,8 @@ The comparison is done two ways:
   (`lib/kernels/src/cuda/ops/conv_2d_kernels.cu`). Run
   `export_reference.py --tf32 0` to reproduce that control experiment.
 
-The **backward** pass is covered the same way — see "Backward pass" below. The
-**update** pass is not: it does not currently run at all (see "Known issues").
+The **backward** and **update** passes are covered the same way — see their
+sections below.
 
 ## How the two frameworks' tensors are matched up
 
@@ -73,7 +73,7 @@ positional arguments, so there was nowhere to hang real options):
 | Variable           | Meaning                                                              |
 | ------------------ | -------------------------------------------------------------------- |
 | `FF_LOAD_TENSORS`  | comma-separated tensor files to copy into the correspondingly-named tensors |
-| `FF_DUMP_TENSORS`  | tensor file to write after running                                    |
+| `FF_DUMP_TENSORS`  | tensor file to write after running; a `%` in the path is replaced by the iteration number and dumps every iteration |
 | `FF_DUMP_NAMES`    | comma-separated tensor names to write to `FF_DUMP_TENSORS`            |
 | `FF_FORWARD_ONLY`  | `1` to run only the forward pass (leaves the loaded weights alone)    |
 | `FF_LOSS`          | loss to attach: `mean_squared_error_avg`, `mean_squared_error_sum`, `categorical_crossentropy`, `identity` |
@@ -108,6 +108,7 @@ REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize 28500 -cuda:dynfb 0' FF_LIST_TENSORS=1 \
 | `export_reference.py`  | writes FlexFlow's inputs and the ultralytics reference outputs |
 | `compare_layerwise.py` | per-layer comparison of the forward pass                       |
 | `compare_layerwise_backward.py` | per-layer comparison of the backward pass             |
+| `compare_optimizer.py` | replays FlexFlow's gradients through `torch.optim.SGD`         |
 | `make_label.py`        | writes the label tensor the loss is taken against              |
 | `compare.py`           | end-to-end comparison and the error metrics                    |
 
@@ -133,10 +134,36 @@ the class head's only from `model.23.scores`. Between them the two runs cover
 all 513 weight gradients. Each run also checks FlexFlow's gradient of the logit
 itself against the analytic `2 (y - label) / numel(y)`.
 
+## Update pass
+
+`compare_optimizer.py` replays FlexFlow's *own* weight gradients through
+`torch.optim.SGD` and checks that it arrives at FlexFlow's weights, step by
+step. Feeding PyTorch FlexFlow's gradients is what makes this a test of the
+optimizer alone rather than of the gradients, which the backward comparison
+covers separately. What is compared is the *step* (the change in the weight):
+at lr=0.001 the weights barely move, so comparing them directly would mostly be
+comparing a number to itself.
+
+Five steps are enough to exercise the momentum buffer (step 0 has an empty
+buffer, later steps accumulate) as well as the weight decay term.
+
+## Memory
+
+Running a full training iteration is tight on a 32 GB card at batch size 6.
+Realm aborts while allocating instances below about `-ll:fsize 26000`, and above
+about `28000` there is not enough memory left *outside* Realm's pool for CUDA's
+own resources once the update pass is issuing its 513 extra tasks per iteration
+— it fails partway through with `CUDA failure: out of memory` from
+`device_stream_t.cc`. The driver uses `27000`; override with `FSIZE=`.
+
+Note that `-ll:fsize 28500` (which appears in some older notes) worked only
+because the update tasks were never actually being spawned.
+
+
 ## Known issues
 
-Three bugs had to be fixed before the backward pass could be validated at all;
-they are described in the session notes. What remains:
+Four bugs had to be fixed before the backward and update passes could be
+validated at all; they are described in the session notes. What remains:
 
 * **Nine batch-norm scale/shift gradients** are 3-100x worse than the float32
   reference's own error (they are the only failures the driver reports; cosine
@@ -146,14 +173,6 @@ they are described in the session notes. What remains:
   cuDNN >= 7: building with `mode = CUDNN_BATCHNORM_SPATIAL` instead makes all
   471/490 gradients pass. Whether the accuracy is worth the speed is a
   judgement call, so the mode is left as it is.
-
-* **The update pass never runs.**
-  `spawn_dynamic_node_invocation` (`lib/realm-execution/src/realm-execution/pcg_instance.cc`)
-  dispatches on the operator attributes without considering the task type, and
-  returns `NO_EVENT` for `WeightAttrs` — which is also what an `UPD` invocation
-  for a weight carries. So all 513 update tasks are scheduled and none are
-  spawned, and weights are bit-identical after a full training iteration even
-  with non-zero gradients.
 
 * **Weights are never initialized.** Nothing in the execution path applies the
   `InitializerAttrs` recorded in the computation graph, so without
