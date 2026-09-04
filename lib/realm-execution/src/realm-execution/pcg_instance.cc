@@ -12,6 +12,7 @@
 #include "task-spec/dynamic_graph/dynamic_node_invocation.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_open_dataflow_graph.h"
 #include "task-spec/dynamic_graph/dynamic_task_type.dtg.h"
+#include "task-spec/dynamic_graph/dynamic_tensor_role.h"
 #include "task-spec/dynamic_graph/dynamic_tensor_guid_t.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_value_attrs.dtg.h"
 #include "task-spec/dynamic_graph/loss_insertion.h"
@@ -391,11 +392,44 @@ static std::map<dynamic_layer_guid_t, Realm::Event>
       }));
 }
 
+/**
+ * \brief Zero every gradient instance held by \p pcg_instance.
+ *
+ * The backward kernels accumulate into their gradient tensors rather than
+ * overwriting them (that is how the subgradients of a tensor that is consumed
+ * more than once get summed together), so the gradients have to be cleared
+ * before each backward pass or they would keep accumulating across training
+ * iterations.
+ *
+ * \note The fills are issued through \ref RealmContext, so they end up in the
+ * context's outstanding events and are therefore picked up as dependencies by
+ * the \ref DependencySet that \ref
+ * execute_distributed_dynamic_node_invocation_set starts from. No additional
+ * synchronization is needed.
+ */
+static void zero_gradients_for_pcg_instance(PCGInstance &pcg_instance) {
+  RealmContext &ctx = pcg_instance.get_realm_context();
+
+  for (auto const &[value, instance] :
+       pcg_instance.get_tensor_instance_backing().backing) {
+    if (value.role != mk_dynamic_tensor_role_bwd()) {
+      continue;
+    }
+
+    ctx.issue_zero_fill(/*shape=*/assert_unwrap(value.parallel_tensor_shape),
+                        /*inst=*/instance.first,
+                        /*requests=*/Realm::ProfilingRequestSet{},
+                        /*wait_on=*/instance.second);
+  }
+}
+
 std::map<dynamic_layer_guid_t, Realm::Event>
     perform_all_passes_for_pcg_instance(
         PCGInstance &pcg_instance,
         ProfilingSettings const &profiling_settings,
         DistributedFfHandle const &device_handle) {
+  zero_gradients_for_pcg_instance(pcg_instance);
+
   std::vector<DynamicNodeInvocation> execution_order =
       pcg_instance.get_execution_order();
   std::map<dynamic_layer_guid_t, Realm::Event> result =
@@ -440,6 +474,8 @@ std::map<dynamic_layer_guid_t, Realm::Event>
         PCGInstance &pcg_instance,
         ProfilingSettings const &profiling_settings,
         DistributedFfHandle const &device_handle) {
+  zero_gradients_for_pcg_instance(pcg_instance);
+
   std::vector<DynamicNodeInvocation> execution_order =
       filter(pcg_instance.get_execution_order(),
              [](DynamicNodeInvocation const &invocation) {
