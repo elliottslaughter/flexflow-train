@@ -1,15 +1,30 @@
+#include "kernels/accessor.h"
+#include "op-attrs/parallel_tensor_shape.h"
+#include "op-attrs/tensor_shape.h"
+#include "op-attrs/tensor_slot_name.dtg.h"
 #include "pcg/file_format/v1/v1_mapped_parallel_computation_graph.h"
 #include "pcg/mapped_parallel_computation_graph/mapped_parallel_computation_graph.dtg.h"
+#include "pcg/mapped_parallel_computation_graph/mapped_parallel_computation_graph.h"
 #include "realm-execution/distributed_ff_handle.h"
+#include "realm-execution/dynamic_tensor_accessor_from_instance.h"
 #include "realm-execution/pcg_instance.h"
 #include "realm-execution/realm_context.h"
 #include "realm-execution/realm_manager.h"
+#include "task-spec/dynamic_graph/dynamic_node_invocation.dtg.h"
+#include "task-spec/dynamic_graph/dynamic_task_type.dtg.h"
+#include "task-spec/dynamic_graph/dynamic_tensor_role.dtg.h"
+#include "task-spec/fwb_tensor_type.dtg.h"
+#include "task-spec/permissions.h"
+#include "utils/containers/contains_key.h"
 #include "utils/cli/cli_get_help_message.h"
 #include "utils/cli/cli_parse.h"
 #include "utils/cli/cli_parse_result.h"
 #include "utils/cli/cli_spec.h"
 #include "utils/nonnegative_int/nonnegative_int.h"
 #include "utils/positive_int/positive_int.h"
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <string_view>
 
@@ -28,6 +43,263 @@ static std::vector<char *> make_realm_args(std::string_view executable_name) {
   result.push_back(leak_string_contents(executable_name));
   return result;
 }
+
+/**
+ * \name Named-tensor I/O
+ *
+ * The options below make it possible to feed externally-generated data into a
+ * model (e.g., an input batch and a set of weights exported from PyTorch) and
+ * to read individual tensors back out, which is what makes it possible to
+ * compare FlexFlow's numerics against another framework's. They are driven by
+ * environment variables rather than command-line flags because
+ * \ref utils/cli only supports boolean flags and positional arguments.
+ *
+ * - <tt>FF_LOAD_TENSORS</tt>: path to a tensor file (see \ref TensorFileEntry)
+ *   whose contents are copied into the correspondingly-named forward tensors
+ *   before running.
+ * - <tt>FF_DUMP_TENSORS</tt>: path to write a tensor file to after running.
+ * - <tt>FF_DUMP_NAMES</tt>: comma-separated list of tensor names to write to
+ *   <tt>FF_DUMP_TENSORS</tt>.
+ * - <tt>FF_FORWARD_ONLY</tt>: if set to 1, run only the forward pass (so that
+ *   the loaded weights are not modified by the optimizer).
+ * - <tt>FF_ITERATIONS</tt>: number of iterations to run (default 5).
+ * - <tt>FF_LIST_TENSORS</tt>: if set to 1, print the name and shape of every
+ *   nameable forward tensor and exit.
+ *
+ * A tensor is named after the layer that produces it, so, e.g., the weights of
+ * the layer named <tt>model.0.conv</tt> are named
+ * <tt>model.0.conv.FILTER</tt>, and the output of that layer is named
+ * <tt>model.0.conv</tt>.
+ * \{
+ */
+
+static constexpr char TENSOR_FILE_MAGIC[8] = {
+    'F', 'F', 'T', 'E', 'N', 'S', 'R', '1'};
+
+struct TensorFileEntry {
+  std::string name;
+  std::vector<int64_t> dims;
+  std::vector<char> data;
+};
+
+template <typename T>
+static void read_raw(std::istream &s, T &value) {
+  s.read(reinterpret_cast<char *>(&value), sizeof(T));
+  ASSERT(!s.fail(), "unexpected end of tensor file");
+}
+
+template <typename T>
+static void write_raw(std::ostream &s, T const &value) {
+  s.write(reinterpret_cast<char const *>(&value), sizeof(T));
+}
+
+static std::vector<TensorFileEntry> read_tensor_file(std::string const &path) {
+  std::ifstream f(path, std::ios::binary);
+  ASSERT(f.good(), "could not open tensor file", path);
+
+  char magic[8];
+  f.read(magic, sizeof(magic));
+  ASSERT(std::memcmp(magic, TENSOR_FILE_MAGIC, sizeof(magic)) == 0,
+         "tensor file has an unexpected magic number",
+         path);
+
+  int64_t num_entries;
+  read_raw(f, num_entries);
+
+  std::vector<TensorFileEntry> result;
+  for (int64_t i = 0; i < num_entries; i++) {
+    TensorFileEntry entry;
+
+    int32_t name_len;
+    read_raw(f, name_len);
+    entry.name.resize(name_len);
+    f.read(entry.name.data(), name_len);
+
+    int32_t num_dims;
+    read_raw(f, num_dims);
+    entry.dims.resize(num_dims);
+    for (int32_t d = 0; d < num_dims; d++) {
+      read_raw(f, entry.dims.at(d));
+    }
+
+    int64_t num_bytes;
+    read_raw(f, num_bytes);
+    entry.data.resize(num_bytes);
+    f.read(entry.data.data(), num_bytes);
+    ASSERT(!f.fail(), "unexpected end of tensor file", path, entry.name);
+
+    result.push_back(entry);
+  }
+
+  return result;
+}
+
+static void write_tensor_file(std::string const &path,
+                              std::vector<TensorFileEntry> const &entries) {
+  std::ofstream f(path, std::ios::binary);
+  ASSERT(f.good(), "could not open tensor file for writing", path);
+
+  f.write(TENSOR_FILE_MAGIC, sizeof(TENSOR_FILE_MAGIC));
+  write_raw(f, static_cast<int64_t>(entries.size()));
+
+  for (TensorFileEntry const &entry : entries) {
+    write_raw(f, static_cast<int32_t>(entry.name.size()));
+    f.write(entry.name.data(), entry.name.size());
+
+    write_raw(f, static_cast<int32_t>(entry.dims.size()));
+    for (int64_t dim : entry.dims) {
+      write_raw(f, dim);
+    }
+
+    write_raw(f, static_cast<int64_t>(entry.data.size()));
+    f.write(entry.data.data(), entry.data.size());
+  }
+
+  ASSERT(f.good(), "error while writing tensor file", path);
+}
+
+static std::optional<std::string> get_env(char const *name) {
+  char const *value = std::getenv(name);
+  if (value == nullptr || std::string{value}.empty()) {
+    return std::nullopt;
+  }
+  return std::string{value};
+}
+
+static bool get_env_flag(char const *name) {
+  return get_env(name) == std::optional<std::string>{"1"};
+}
+
+static std::vector<std::string> split_on_commas(std::string const &s) {
+  std::vector<std::string> result;
+  std::string current;
+  for (char c : s) {
+    if (c == ',') {
+      if (!current.empty()) {
+        result.push_back(current);
+      }
+      current.clear();
+    } else {
+      current.push_back(c);
+    }
+  }
+  if (!current.empty()) {
+    result.push_back(current);
+  }
+  return result;
+}
+
+/**
+ * \brief Strip the quotes that FlexFlow's generated <tt>format_as</tt>
+ * functions put around enum values.
+ */
+static std::string strip_quotes(std::string s) {
+  s.erase(std::remove(s.begin(), s.end(), '"'), s.end());
+  return s;
+}
+
+/**
+ * \brief Map each named forward tensor of \p mpcg to the corresponding value
+ * in \p pcg_instance's \ref TensorInstanceBacking.
+ *
+ * A tensor takes the name of the layer that produces it (see
+ * \ref ComputationGraphBuilder::add_layer for how weights get their names).
+ */
+static std::map<std::string, DynamicValueAttrs>
+    get_named_forward_values(MappedParallelComputationGraph const &mpcg,
+                             PCGInstance const &pcg_instance) {
+  std::map<parallel_tensor_guid_t, std::string> tensor_names;
+  for (parallel_layer_guid_t layer : mpcg_get_parallel_layers(mpcg)) {
+    MappedParallelLayerAttrs attrs = mpcg.raw_graph.at(layer.raw_graph_node);
+    if (!attrs.name.has_value()) {
+      continue;
+    }
+    std::string layer_name = attrs.name.value();
+    for (auto const &[slot, tensor] : mpcg_get_outgoing_tensors(mpcg, layer)) {
+      // Layers with a single output (the common case) name their output after
+      // themselves; layers with multiple outputs (e.g., split) additionally
+      // qualify each output with its slot name.
+      if (slot == TensorSlotName::OUTPUT) {
+        tensor_names.insert({tensor, layer_name});
+      } else {
+        tensor_names.insert(
+            {tensor, layer_name + "." + strip_quotes(format_as(slot))});
+      }
+    }
+  }
+
+  std::map<std::string, std::vector<DynamicValueAttrs>> candidates;
+  for (auto const &[value, instance] :
+       pcg_instance.get_tensor_instance_backing().backing) {
+    if (!value.tensor_guid.has<parallel_tensor_guid_t>()) {
+      continue;
+    }
+    parallel_tensor_guid_t tensor =
+        value.tensor_guid.get<parallel_tensor_guid_t>();
+    if (!contains_key(tensor_names, tensor)) {
+      continue;
+    }
+
+    // Gradients get the same name as the tensor they are the gradient of, with
+    // a "grad:" prefix. Values carrying a subgradient_id are the per-use
+    // partial gradients that pass expansion creates for a tensor that is
+    // consumed more than once; only their sum (the value without a
+    // subgradient_id) is the gradient of the tensor.
+    std::string prefix;
+    if (value.role == DynamicTensorRole{FwbTensorType::FORWARD}) {
+      prefix = "";
+    } else if (value.role == DynamicTensorRole{FwbTensorType::GRADIENT} &&
+               value.subgradient_id == std::nullopt) {
+      prefix = "grad:";
+    } else {
+      continue;
+    }
+    candidates[prefix + tensor_names.at(tensor)].push_back(value);
+  }
+
+  // Layers that were not explicitly named fall back to a default name derived
+  // from their operator type (e.g., "EW_ADD"), so a name is only usable if
+  // exactly one tensor has it. Ambiguous names are simply dropped: referring
+  // to one later on then fails with a "not present in the model" error.
+  std::map<std::string, DynamicValueAttrs> result;
+  for (auto const &[name, values] : candidates) {
+    if (values.size() == 1) {
+      result.insert({name, values.at(0)});
+    }
+  }
+
+  return result;
+}
+
+/**
+ * \brief Get a \ref GenericTensorAccessorW pointing at the (possibly
+ * device-resident) storage backing \p value.
+ */
+static GenericTensorAccessorW
+    get_accessor_for_value(PCGInstance &pcg_instance,
+                           RealmContext &ctx,
+                           DynamicValueAttrs const &value) {
+  auto const &instance =
+      pcg_instance.get_tensor_instance_backing().backing.at(value);
+
+  return dynamic_tensor_accessor_from_instance(
+             /*inst=*/instance.first,
+             /*ready=*/instance.second,
+             /*parallel_tensor_shape=*/value.parallel_tensor_shape.value(),
+             /*permissions=*/Permissions::RW,
+             /*for_processor=*/ctx.get_current_processor())
+      .require_write();
+}
+
+static std::vector<int64_t> get_dims(TensorShape const &shape) {
+  std::vector<int64_t> result;
+  for (positive_int dim : shape.dims.ff_ordered) {
+    result.push_back(dim.int_from_positive_int());
+  }
+  return result;
+}
+
+///\}
 
 int main(int argc, char **argv) {
   CLISpec cli = empty_cli_spec();
@@ -65,6 +337,15 @@ int main(int argc, char **argv) {
   }
 
   std::string mapped_pcg_json = cli_get_argument(parsed, key_mapped_pcg_json);
+
+  std::optional<std::string> load_tensors_path = get_env("FF_LOAD_TENSORS");
+  std::optional<std::string> dump_tensors_path = get_env("FF_DUMP_TENSORS");
+  std::vector<std::string> dump_tensor_names =
+      split_on_commas(get_env("FF_DUMP_NAMES").value_or(""));
+  bool forward_only = get_env_flag("FF_FORWARD_ONLY");
+  bool list_tensors = get_env_flag("FF_LIST_TENSORS");
+  int num_iterations =
+      std::stoi(get_env("FF_ITERATIONS").value_or(std::string{"5"}));
 
   std::vector<char *> realm_args = make_realm_args(prog_name);
   int realm_argc = realm_args.size();
@@ -110,13 +391,112 @@ int main(int argc, char **argv) {
             /*device_handle=*/device_handle,
             /*device_type=*/has_gpus ? DeviceType::GPU : DeviceType::CPU);
 
+        std::map<std::string, DynamicValueAttrs> named_values =
+            get_named_forward_values(mpcg, pcg_instance);
+
+        if (get_env_flag("FF_LIST_TASKS")) {
+          std::map<std::string, int> counts;
+          for (DynamicNodeInvocation const &invocation :
+               pcg_instance.get_execution_order()) {
+            counts[fmt::to_string(
+                assert_unwrap(invocation.node_attrs.task_type))] += 1;
+          }
+          for (auto const &[task_type, count] : counts) {
+            std::cout << task_type << " " << count << std::endl;
+          }
+          return;
+        }
+
+        if (list_tensors) {
+          for (auto const &[name, value] : named_values) {
+            std::cout << name << " "
+                      << get_piece_shape(value.parallel_tensor_shape.value())
+                      << std::endl;
+          }
+          return;
+        }
+
+        if (load_tensors_path.has_value()) {
+          std::vector<TensorFileEntry> entries =
+              read_tensor_file(load_tensors_path.value());
+          for (TensorFileEntry const &entry : entries) {
+            ASSERT(contains_key(named_values, entry.name),
+                   "tensor file contains a tensor that is not present in the "
+                   "model",
+                   entry.name);
+            DynamicValueAttrs value = named_values.at(entry.name);
+            TensorShape shape =
+                get_piece_shape(value.parallel_tensor_shape.value());
+            ASSERT(get_dims(shape) == entry.dims,
+                   "tensor file and model disagree about a tensor's shape",
+                   entry.name,
+                   shape);
+
+            GenericTensorAccessorW dst =
+                get_accessor_for_value(pcg_instance, ctx, value);
+            GenericTensorAccessorR src = GenericTensorAccessorR{
+                shape,
+                const_cast<char *>(entry.data.data()),
+                DeviceType::CPU,
+            };
+            copy_accessor_data_to_l_from_r(dst, src);
+          }
+          std::cerr << "run-model: loaded " << entries.size()
+                    << " tensors from " << load_tensors_path.value()
+                    << std::endl;
+        }
+
         // begin training loop
-        int num_epochs = 5;
-        for (int i = 0; i < num_epochs; i++) {
-          perform_all_passes_for_pcg_instance(
-              /*instance=*/pcg_instance,
-              /*profiling_settings=*/ProfilingSettings{0, 1},
-              /*device_handle=*/device_handle);
+        for (int i = 0; i < num_iterations; i++) {
+          if (forward_only) {
+            perform_forward_pass_for_pcg_instance(
+                /*instance=*/pcg_instance,
+                /*profiling_settings=*/ProfilingSettings{0, 1},
+                /*device_handle=*/device_handle);
+          } else {
+            perform_all_passes_for_pcg_instance(
+                /*instance=*/pcg_instance,
+                /*profiling_settings=*/ProfilingSettings{0, 1},
+                /*device_handle=*/device_handle);
+          }
+        }
+
+        if (dump_tensors_path.has_value()) {
+          ctx.get_outstanding_events().wait();
+
+          std::vector<TensorFileEntry> entries;
+          for (std::string const &name : dump_tensor_names) {
+            ASSERT(contains_key(named_values, name),
+                   "requested a dump of a tensor that is not present in the "
+                   "model",
+                   name);
+            DynamicValueAttrs value = named_values.at(name);
+            TensorShape shape =
+                get_piece_shape(value.parallel_tensor_shape.value());
+
+            GenericTensorAccessorW src =
+                get_accessor_for_value(pcg_instance, ctx, value);
+
+            TensorFileEntry entry;
+            entry.name = name;
+            entry.dims = get_dims(shape);
+            entry.data.resize(get_size_in_bytes(shape)
+                                  .unwrap_num_bytes()
+                                  .unwrap_nonnegative());
+
+            GenericTensorAccessorW dst = GenericTensorAccessorW{
+                shape,
+                entry.data.data(),
+                DeviceType::CPU,
+            };
+            copy_accessor_data_to_l_from_r(
+                dst, read_only_accessor_from_write_accessor(src));
+
+            entries.push_back(entry);
+          }
+          write_tensor_file(dump_tensors_path.value(), entries);
+          std::cerr << "run-model: dumped " << entries.size() << " tensors to "
+                    << dump_tensors_path.value() << std::endl;
         }
       });
   result.wait();

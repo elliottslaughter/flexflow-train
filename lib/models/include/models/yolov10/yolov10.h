@@ -10,6 +10,7 @@
 #include "models/yolov10/yolov10_config.dtg.h"
 #include "models/yolov10/yolov10_detect_head_outputs.dtg.h"
 #include "pcg/computation_graph_builder.h"
+#include <string>
 
 namespace FlexFlow {
 
@@ -45,7 +46,8 @@ tensor_guid_t create_yolov10_conv_module(
     std::optional<positive_int> groups = std::nullopt,
     std::optional<bool> use_activation = std::nullopt,
     std::optional<positive_int> dilation = std::nullopt,
-    std::optional<nonnegative_int> padding = std::nullopt);
+    std::optional<nonnegative_int> padding = std::nullopt,
+    std::string const &name = "");
 
 /**
  * \brief Create layers matching <a href="https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1530-L1575">ultralytics' <tt>SCDown</tt> module</a>.
@@ -56,7 +58,8 @@ tensor_guid_t create_yolov10_scdown_module(
     std::optional<positive_int> const &num_input_channels,
     std::optional<positive_int> const &num_output_channels,
     std::optional<positive_int> const &kernel_size,
-    std::optional<positive_int> const &stride);
+    std::optional<positive_int> const &stride,
+    std::string const &name = "");
 
 /**
  * \brief Create layers matching <a href="https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L208-L237">ultralytics' <tt>SPPF</tt> (Spatial Pyramid Pooling - Fast) module</a>.
@@ -68,7 +71,8 @@ tensor_guid_t create_yolov10_sppf_module(
     std::optional<positive_int> const &num_output_channels = std::nullopt,
     std::optional<positive_int> const &kernel_size = std::nullopt,
     std::optional<positive_int> const &num_pooling_iterations = std::nullopt,
-    std::optional<bool> const &use_shortcut_connection = std::nullopt);
+    std::optional<bool> const &use_shortcut_connection = std::nullopt,
+    std::string const &name = "");
 
 /**
  * \brief Create layers matching <a href="https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1271-L1328">ultralytics' <tt>Attention</tt> module</a>.
@@ -78,7 +82,8 @@ tensor_guid_t create_yolov10_attention_module(
     tensor_guid_t const &input_tensor,
     positive_int num_input_channels,
     std::optional<positive_int> num_heads = std::nullopt,
-    std::optional<float> attn_ratio = std::nullopt);
+    std::optional<float> attn_ratio = std::nullopt,
+    std::string const &name = "");
 
 /**
  * \brief Create layers matching <a href="https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1381-L1433">ultralytics' <tt>PSA</tt> module</a>.
@@ -88,7 +93,8 @@ tensor_guid_t create_yolov10_psa_module(
     tensor_guid_t const &input_tensor,
     std::optional<positive_int> const &num_input_channels = std::nullopt,
     std::optional<positive_int> const &num_output_channels = std::nullopt,
-    std::optional<float> const &expansion_ratio = std::nullopt);
+    std::optional<float> const &expansion_ratio = std::nullopt,
+    std::string const &name = "");
 
 /**
  * \brief Create layers matching <a href="https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L457-L481">ultralytics' <tt>Bottleneck</tt> module</a>.
@@ -102,7 +108,8 @@ tensor_guid_t create_yolov10_bottleneck_module(
     std::optional<positive_int> const &groups = std::nullopt,
     std::optional<positive_int> const &kernel_size_1 = std::nullopt,
     std::optional<positive_int> const &kernel_size_2 = std::nullopt,
-    std::optional<float> const &expansion_ratio = std::nullopt);
+    std::optional<float> const &expansion_ratio = std::nullopt,
+    std::string const &name = "");
 
 /**
  * \brief Create layers matching <a href="https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L288-L319">ultralytics' <tt>C2f</tt> module</a>.
@@ -115,7 +122,8 @@ tensor_guid_t create_yolov10_c2f_module(
     std::optional<positive_int> const &num_bottleneck_blocks = std::nullopt,
     std::optional<bool> const &use_shortcut_connection = std::nullopt,
     std::optional<positive_int> const &groups = std::nullopt,
-    std::optional<float> const &expansion_ratio = std::nullopt);
+    std::optional<float> const &expansion_ratio = std::nullopt,
+    std::string const &name = "");
 
 /**
  * \brief Create layers matching <a href="https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1195-L1237">ultralytics' <tt>CIB</tt> module</a>.
@@ -126,7 +134,8 @@ tensor_guid_t create_yolov10_cib_module(
     std::optional<positive_int> const &num_input_channels = std::nullopt,
     std::optional<positive_int> const &num_output_channels = std::nullopt,
     std::optional<bool> const &use_shortcut_connection = std::nullopt,
-    std::optional<float> const &expansion_ratio = std::nullopt);
+    std::optional<float> const &expansion_ratio = std::nullopt,
+    std::string const &name = "");
 
 /**
  * \brief Create layers matching <a href="https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1240-L1268">ultralytics' <tt>C2fCIB</tt> module</a>.
@@ -139,7 +148,8 @@ tensor_guid_t create_yolov10_c2fcib_module(
     std::optional<positive_int> const &num_cib_modules_to_stack = std::nullopt,
     std::optional<bool> use_shortcut_connection = std::nullopt,
     std::optional<positive_int> const &groups = std::nullopt,
-    std::optional<float> const &expansion_ratio = std::nullopt);
+    std::optional<float> const &expansion_ratio = std::nullopt,
+    std::string const &name = "");
 
 /**
  * \brief Creates layers matching a single iteration of
@@ -155,7 +165,8 @@ tensor_guid_t
     create_yolov10_v10detect_box_head(ComputationGraphBuilder &cgb,
                                       tensor_guid_t const &input_tensor,
                                       positive_int c2,
-                                      positive_int reg_max);
+                                      positive_int reg_max,
+                                      std::string const &name = "");
 
 /**
  * \brief Creates layers matching a single iteration of
@@ -171,7 +182,8 @@ tensor_guid_t
     create_yolov10_v10detect_cls_head(ComputationGraphBuilder &cgb,
                                       tensor_guid_t const &input_tensor,
                                       positive_int c3,
-                                      positive_int num_classes);
+                                      positive_int num_classes,
+                                      std::string const &name = "");
 
 /**
  * \brief Create layers matching <a href="https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/head.py#L1761-L1810">ultralytics' <tt>v10Detect</tt> module</a>.
@@ -198,7 +210,8 @@ YOLOv10DetectHeadOutputs create_yolov10_v10detect_module(
     ComputationGraphBuilder &cgb,
     std::vector<tensor_guid_t> const &input_tensors,
     positive_int num_classes,
-    std::optional<positive_int> reg_max = std::nullopt);
+    std::optional<positive_int> reg_max = std::nullopt,
+    std::string const &name = "");
 
 /**
  * \brief Create layers for the given \ref YOLOv10LayerConfig.
@@ -213,7 +226,8 @@ tensor_guid_t
                          YOLOv10LayerConfig const &layer_config,
                          positive_int num_classes,
                          YOLOv10ScalingConfig const &scaling_config,
-                         std::vector<tensor_guid_t> const &past_layer_outputs);
+                         std::vector<tensor_guid_t> const &past_layer_outputs,
+                         std::string const &name = "");
 
 /**
  * \brief Get the YOLOv10 computation graph
