@@ -443,16 +443,27 @@ static std::map<dynamic_layer_guid_t, Realm::Event>
 static void zero_gradients_for_pcg_instance(PCGInstance &pcg_instance) {
   RealmContext &ctx = pcg_instance.get_realm_context();
 
+  // The fills have to wait on everything already in flight. The barrier that
+  // \ref execute_distributed_dynamic_node_invocation_set sets up only makes
+  // the tasks it spawns depend on the fills; it does nothing to keep the fills
+  // from running ahead of what came before them. On every iteration after the
+  // first, what came before them is the previous iteration's backward and
+  // update tasks, still reading and writing these very instances -- and an
+  // instance's own ready event, which is all the fills used to wait on, comes
+  // from its allocation and triggered long ago.
+  Realm::Event precondition = ctx.get_outstanding_events();
+
   for (auto const &[value, instance] :
        pcg_instance.get_tensor_instance_backing().backing) {
     if (value.role != mk_dynamic_tensor_role_bwd()) {
       continue;
     }
 
-    ctx.issue_zero_fill(/*shape=*/assert_unwrap(value.parallel_tensor_shape),
-                        /*inst=*/instance.first,
-                        /*requests=*/Realm::ProfilingRequestSet{},
-                        /*wait_on=*/instance.second);
+    ctx.issue_zero_fill(
+        /*shape=*/assert_unwrap(value.parallel_tensor_shape),
+        /*inst=*/instance.first,
+        /*requests=*/Realm::ProfilingRequestSet{},
+        /*wait_on=*/Realm::Event::merge_events(precondition, instance.second));
   }
 }
 
