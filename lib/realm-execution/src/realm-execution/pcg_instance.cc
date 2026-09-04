@@ -12,6 +12,7 @@
 #include "task-spec/dynamic_graph/dynamic_node_invocation.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_open_dataflow_graph.h"
 #include "task-spec/dynamic_graph/dynamic_task_type.dtg.h"
+#include "task-spec/dynamic_graph/dynamic_optimizer_tensor_role.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_tensor_role.h"
 #include "task-spec/dynamic_graph/dynamic_tensor_guid_t.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_value_attrs.dtg.h"
@@ -123,6 +124,20 @@ PCGInstance create_pcg_instance(
 
   TensorInstanceBacking tensor_instance_backing =
       perform_instance_allocation(dg, inputs, ctx);
+
+  // Optimizer state (e.g., SGD's momentum buffer) has to start at zero: the
+  // update kernels accumulate into it, and the first step of SGD with momentum
+  // is only equal to the plain gradient step (which is what both FlexFlow's
+  // kernel and torch.optim.SGD compute) if the buffer starts out zeroed.
+  for (auto const &[value, instance] : tensor_instance_backing.backing) {
+    if (value.role.has_value() &&
+        value.role.value().has<DynamicOptimizerTensorRole>()) {
+      ctx.issue_zero_fill(/*shape=*/assert_unwrap(value.parallel_tensor_shape),
+                          /*inst=*/instance.first,
+                          /*requests=*/Realm::ProfilingRequestSet{},
+                          /*wait_on=*/instance.second);
+    }
+  }
 
   logit_grad_value =
       transform(logit_grad_value, [&](DynamicValueAttrs const &lgv) {
@@ -324,7 +339,18 @@ static Realm::Event spawn_dynamic_node_invocation(
       [&](PCGOperatorAttrs const &pcg_op_attrs) {
         return pcg_op_attrs.visit<Realm::Event>(overload{
             [&](InputAttrs const &) { return Realm::Event::NO_EVENT; },
-            [&](WeightAttrs const &) { return Realm::Event::NO_EVENT; },
+            [&](WeightAttrs const &) {
+              // A weight has no forward or backward task of its own, but
+              // update insertion hangs the optimizer's update task off of the
+              // weight's node (see perform_update_insertion), so an UPD
+              // invocation for a weight does have a task to run.
+              DynamicTaskType task_type =
+                  assert_unwrap(invocation.node_attrs.task_type);
+              if (task_type == DynamicTaskType::UPD) {
+                return spawn_task();
+              }
+              return Realm::Event::NO_EVENT;
+            },
             [&](ReplicateAttrs const &) {
               DynamicTaskType task_type =
                   assert_unwrap(invocation.node_attrs.task_type);
