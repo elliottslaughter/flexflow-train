@@ -71,6 +71,29 @@ public:
 
   /** \name Data movement and reduction */
   ///\{
+  /**
+   * \brief Fill every element of \p inst with the \p fill_value_size bytes at
+   * \p fill_value.
+   */
+  Realm::Event issue_fill(ParallelTensorShape const &shape,
+                          Realm::RegionInstance inst,
+                          void const *fill_value,
+                          size_t fill_value_size,
+                          Realm::ProfilingRequestSet const &requests,
+                          Realm::Event wait_on = Realm::Event::NO_EVENT,
+                          int priority = 0);
+
+  /**
+   * \brief Zero out every element of \p inst.
+   *
+   * \relates issue_fill
+   */
+  Realm::Event issue_zero_fill(ParallelTensorShape const &shape,
+                               Realm::RegionInstance inst,
+                               Realm::ProfilingRequestSet const &requests,
+                               Realm::Event wait_on = Realm::Event::NO_EVENT,
+                               int priority = 0);
+
   Realm::Event issue_copy(ParallelTensorShape const &src_shape,
                           Realm::RegionInstance src_inst,
                           ParallelTensorShape const &dst_shape,
