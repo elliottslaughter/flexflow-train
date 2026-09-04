@@ -61,7 +61,9 @@ static std::vector<char *> make_realm_args(std::string_view executable_name) {
  * - <tt>FF_LOAD_TENSORS</tt>: comma-separated paths to tensor files (see \ref
  *   TensorFileEntry) whose contents are copied into the correspondingly-named
  *   forward tensors before running.
- * - <tt>FF_DUMP_TENSORS</tt>: path to write a tensor file to after running.
+ * - <tt>FF_DUMP_TENSORS</tt>: path to write a tensor file to after running. A
+ *   <tt>%</tt> in the path is replaced by the iteration number and turns this
+ *   into a dump at the end of every iteration.
  * - <tt>FF_DUMP_NAMES</tt>: comma-separated list of tensor names to write to
  *   <tt>FF_DUMP_TENSORS</tt>.
  * - <tt>FF_FORWARD_ONLY</tt>: if set to 1, run only the forward pass (so that
@@ -590,22 +592,7 @@ int main(int argc, char **argv) {
                     << " tensors from " << path << std::endl;
         }
 
-        // begin training loop
-        for (int i = 0; i < num_iterations; i++) {
-          if (forward_only) {
-            perform_forward_pass_for_pcg_instance(
-                /*instance=*/pcg_instance,
-                /*profiling_settings=*/ProfilingSettings{0, 1},
-                /*device_handle=*/device_handle);
-          } else {
-            perform_all_passes_for_pcg_instance(
-                /*instance=*/pcg_instance,
-                /*profiling_settings=*/ProfilingSettings{0, 1},
-                /*device_handle=*/device_handle);
-          }
-        }
-
-        if (dump_tensors_path.has_value()) {
+        auto dump_tensors = [&](std::string const &path) {
           ctx.get_outstanding_events().wait();
 
           std::vector<TensorFileEntry> entries;
@@ -638,9 +625,42 @@ int main(int argc, char **argv) {
 
             entries.push_back(entry);
           }
-          write_tensor_file(dump_tensors_path.value(), entries);
+          write_tensor_file(path, entries);
           std::cerr << "run-model: dumped " << entries.size() << " tensors to "
-                    << dump_tensors_path.value() << std::endl;
+                    << path << std::endl;
+        };
+
+        // A '%' in the dump path is replaced by the iteration number and the
+        // dump happens at the end of every iteration (the same convention
+        // Realm's -pr:logfile uses), which is what makes it possible to follow
+        // a tensor across a training run.
+        bool dump_every_iteration =
+            dump_tensors_path.has_value() &&
+            dump_tensors_path.value().find('%') != std::string::npos;
+
+        // begin training loop
+        for (int i = 0; i < num_iterations; i++) {
+          if (forward_only) {
+            perform_forward_pass_for_pcg_instance(
+                /*instance=*/pcg_instance,
+                /*profiling_settings=*/ProfilingSettings{0, 1},
+                /*device_handle=*/device_handle);
+          } else {
+            perform_all_passes_for_pcg_instance(
+                /*instance=*/pcg_instance,
+                /*profiling_settings=*/ProfilingSettings{0, 1},
+                /*device_handle=*/device_handle);
+          }
+
+          if (dump_every_iteration) {
+            std::string path = dump_tensors_path.value();
+            path.replace(path.find('%'), 1, std::to_string(i));
+            dump_tensors(path);
+          }
+        }
+
+        if (dump_tensors_path.has_value() && !dump_every_iteration) {
+          dump_tensors(dump_tensors_path.value());
         }
       });
   result.wait();
