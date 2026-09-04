@@ -8,6 +8,7 @@
 #include "realm-execution/redops/redop_id_t.h"
 #include "realm-execution/tasks/impl/op_task.h"
 #include "realm-execution/tensor_instance_backing.h"
+#include "realm-execution/weight_initialization.h"
 #include "task-spec/dynamic_graph/copy_insertion.h"
 #include "task-spec/dynamic_graph/dynamic_node_invocation.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_open_dataflow_graph.h"
@@ -124,6 +125,12 @@ PCGInstance create_pcg_instance(
 
   TensorInstanceBacking tensor_instance_backing =
       perform_instance_allocation(dg, inputs, ctx);
+
+  // Nothing else writes a weight before the first forward pass reads it, so
+  // without this the model would train starting from whatever happened to be
+  // in the memory the weights were allocated out of.
+  perform_weight_initialization(
+      ctx, dg, tensor_instance_backing, ctx.get_outstanding_events());
 
   // Optimizer state (e.g., SGD's momentum buffer) has to start at zero: the
   // update kernels accumulate into it, and the first step of SGD with momentum

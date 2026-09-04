@@ -1,0 +1,33 @@
+namespace = "FlexFlow"
+name = "WeightInitTaskArgs"
+type = "struct"
+features = []
+docstring = '''
+\brief An encapsulation of the arguments passed to \ref weight_init_task_body
+       by \ref spawn_weight_init_task.
+
+For the meaning of specific fields, see the parameter descriptions for
+\ref spawn_weight_init_task.
+'''
+
+includes = [
+  "op-attrs/initializer_attrs.dtg.h",
+  "realm-execution/tensor_instance_backing.dtg.h",
+  "task-spec/dynamic_graph/dynamic_value_attrs.dtg.h",
+]
+
+[[fields]]
+name = "value"
+type = "::FlexFlow::DynamicValueAttrs"
+
+[[fields]]
+name = "tensor_backing"
+type = "TensorInstanceBacking"
+
+[[fields]]
+name = "initializer"
+type = "::FlexFlow::InitializerAttrs"
+
+[[fields]]
+name = "salt"
+type = "uint64_t"

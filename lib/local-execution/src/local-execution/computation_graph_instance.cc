@@ -2,6 +2,7 @@
 #include "local-execution/per_device_op_state_initialization.h"
 #include "local-execution/task_execution.h"
 #include "local-execution/tensor_allocation.h"
+#include "local-execution/weight_initialization.h"
 #include "pcg/optimizer_attrs.h"
 #include "task-spec/dynamic_graph/dynamic_node_invocation.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_open_dataflow_graph.h"
@@ -83,6 +84,11 @@ ComputationGraphInstance create_computation_graph_instance(
 
   dg = perform_update_insertion(dg, optimizer_attrs);
   dg = perform_tensor_allocation(dg, inputs, allocator);
+
+  // Nothing else writes a weight before the first forward pass reads it, so
+  // without this the model would train starting from whatever happened to be
+  // in the memory the weights were allocated out of.
+  perform_weight_initialization(dg);
 
   std::optional<GenericTensorAccessorW> logit_grad_tensor =
       transform(logit_grad_value, [&](DynamicValueAttrs const &lgv) {

@@ -1,0 +1,31 @@
+namespace = "FlexFlow"
+name = "SerializableWeightInitTaskArgs"
+type = "struct"
+features = [
+  "eq",
+  "fmt",
+  "hash",
+  "json",
+]
+
+includes = [
+  "op-attrs/initializer_attrs.dtg.h",
+  "realm-execution/tasks/serializer/serializable_tensor_instance_backing.dtg.h",
+  "task-spec/dynamic_graph/serializable_dynamic_value_attrs.dtg.h",
+]
+
+[[fields]]
+name = "value"
+type = "::FlexFlow::SerializableDynamicValueAttrs"
+
+[[fields]]
+name = "tensor_backing"
+type = "::FlexFlow::SerializableTensorInstanceBacking"
+
+[[fields]]
+name = "initializer"
+type = "::FlexFlow::InitializerAttrs"
+
+[[fields]]
+name = "salt"
+type = "uint64_t"
