@@ -17,6 +17,10 @@ WORKDIR="${1:-$HERE/work}"
 ULTRALYTICS="${ULTRALYTICS:-/home/eslaught/flexflow/ultralytics}"
 PYTHON="${PYTHON:-$HERE/.venv/bin/python}"
 NIX="${NIX:-nix}"
+# Realm aborts allocating instances below ~26000, and above ~28000 there is not
+# enough left outside its pool for CUDA's own resources once the update pass is
+# running. See the README.
+FSIZE="${FSIZE:-27000}"
 
 mkdir -p "$WORKDIR"
 
@@ -55,7 +59,7 @@ PY
 )
 
 echo "=== running FlexFlow on the same input and weights ==="
-ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize 28500 -cuda:dynfb 0' \
+ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
   FF_LOAD_TENSORS='$WORKDIR/ff_inputs.bin' \
   FF_DUMP_TENSORS='$WORKDIR/ff_tensors.bin' \
   FF_DUMP_NAMES='$NAMES' \
@@ -108,7 +112,7 @@ PY
 for logit in boxes scores; do
   echo
   echo "=== running FlexFlow's backward pass (loss against model.23.$logit) ==="
-  ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize 28500 -cuda:dynfb 0' \
+  ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
     FF_LOAD_TENSORS='$WORKDIR/ff_inputs.bin,$WORKDIR/label_$logit.bin' \
     FF_DUMP_TENSORS='$WORKDIR/ff_bwd_$logit.bin' \
     FF_DUMP_NAMES='$BWD_NAMES' \
@@ -124,3 +128,45 @@ for logit in boxes scores; do
     --label "$WORKDIR/label_$logit.bin" \
     --logit "model.23.$logit" || true
 done
+
+# ---------------------------------------------------------------------------
+# Update pass
+#
+# Run several training iterations, dumping every weight and weight gradient at
+# the end of each, then replay FlexFlow's own gradients through torch.optim.SGD
+# and check it arrives at the same weights.
+# ---------------------------------------------------------------------------
+
+OPT_NAMES=$(PYTHONPATH="$ULTRALYTICS:$HERE" "$PYTHON" - "$WORKDIR/yolov10x_cg.json" <<'PY'
+import sys
+import reference_model
+from export_reference import get_flexflow_weight_names
+
+model = reference_model.build_model()
+present = set(get_flexflow_weight_names(sys.argv[1]))
+weights = [w for w in reference_model.get_flexflow_weight_names(model).values()
+           if w in present]
+print(",".join(weights + ["grad:" + w for w in weights]))
+PY
+)
+
+STEPS=5
+echo
+echo "=== running FlexFlow for $STEPS training iterations ==="
+ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
+  FF_LOAD_TENSORS='$WORKDIR/ff_inputs.bin,$WORKDIR/label_boxes.bin' \
+  FF_DUMP_TENSORS='$WORKDIR/ff_opt_%.bin' \
+  FF_DUMP_NAMES='$OPT_NAMES' \
+  FF_LOSS=mean_squared_error_avg FF_LOSS_LOGIT=model.23.boxes \
+  FF_ITERATIONS=$STEPS \
+  nixGL -- ./build/release/bin/run-model/run-model '$WORKDIR/yolov10x_mpcg.json'"
+
+ITER_ARGS=()
+for step in $(seq 0 $((STEPS - 1))); do
+  ITER_ARGS+=(--iteration "$WORKDIR/ff_opt_$step.bin")
+done
+
+echo
+echo "=== optimizer comparison against torch.optim.SGD ==="
+PYTHONPATH="$ULTRALYTICS:$HERE" "$PYTHON" "$HERE/compare_optimizer.py" \
+  --initial "$WORKDIR/ff_inputs.bin" "${ITER_ARGS[@]}"
