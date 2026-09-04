@@ -1,6 +1,7 @@
 #include "realm-execution/tasks/impl/per_device_op_state_init_task.h"
 #include "local-execution/per_device_op_state_initialization.h"
 #include "realm-execution/dynamic_tensor_accessor_from_instance.h"
+#include "realm-execution/realm_allocator.h"
 #include "realm-execution/tasks/impl/per_device_op_state_init_return_task.h"
 #include "realm-execution/tasks/impl/per_device_op_state_init_task_args.dtg.h"
 #include "realm-execution/tasks/impl/serializable_per_device_op_state_init_task_args.h"
@@ -49,9 +50,19 @@ void per_device_op_state_init_task_body(void const *args,
   invocation.inputs = map_values(invocation.inputs, map_instance_to_accessor);
   invocation.outputs = map_values(invocation.outputs, map_instance_to_accessor);
 
+  // Several operators' per-device state holds device allocations that the
+  // operator's forward and backward tasks read on every iteration (e.g., batch
+  // norm's running/saved statistics). Those allocations therefore have to
+  // outlive this task, but the allocator owned by the RealmContext above is
+  // destroyed when this task returns, destroying its instances with it. So
+  // intentionally leak an allocator for the state to be allocated out of, in
+  // the same way the state itself is intentionally leaked below.
+  Allocator *state_allocator = new Allocator{get_realm_allocator(
+      proc, RealmContext::get_nearest_memory(proc))};
+
   DynamicNodeInvocation result_invocation =
       initialize_node(invocation,
-                      ctx.get_current_device_allocator(),
+                      *state_allocator,
                       task_args.profiling_settings,
                       device_handle,
                       task_args.optimizer_attrs,
