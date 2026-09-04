@@ -292,28 +292,48 @@ static Realm::IndexSpace<N, T> ispace_from_dims(TensorDims const &dims) {
   switch (dims.ff_ordered.num_dims()) {
 #if REALM_MAX_DIM >= 1
     case 1:
-      return ispace_from_dims<1>(dims).fill(
-          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+      return ispace_from_dims<1>(dims).fill({dst_field},
+                                            requests,
+                                            fill_value,
+                                            fill_value_size,
+                                            wait_on,
+                                            priority);
 #endif
 #if REALM_MAX_DIM >= 2
     case 2:
-      return ispace_from_dims<2>(dims).fill(
-          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+      return ispace_from_dims<2>(dims).fill({dst_field},
+                                            requests,
+                                            fill_value,
+                                            fill_value_size,
+                                            wait_on,
+                                            priority);
 #endif
 #if REALM_MAX_DIM >= 3
     case 3:
-      return ispace_from_dims<3>(dims).fill(
-          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+      return ispace_from_dims<3>(dims).fill({dst_field},
+                                            requests,
+                                            fill_value,
+                                            fill_value_size,
+                                            wait_on,
+                                            priority);
 #endif
 #if REALM_MAX_DIM >= 4
     case 4:
-      return ispace_from_dims<4>(dims).fill(
-          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+      return ispace_from_dims<4>(dims).fill({dst_field},
+                                            requests,
+                                            fill_value,
+                                            fill_value_size,
+                                            wait_on,
+                                            priority);
 #endif
 #if REALM_MAX_DIM >= 5
     case 5:
-      return ispace_from_dims<5>(dims).fill(
-          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+      return ispace_from_dims<5>(dims).fill({dst_field},
+                                            requests,
+                                            fill_value,
+                                            fill_value_size,
+                                            wait_on,
+                                            priority);
 #endif
     default:
       PANIC("TensorShape dims greater than REALM_MAX_DIM: {}",
@@ -322,13 +342,14 @@ static Realm::IndexSpace<N, T> ispace_from_dims(TensorDims const &dims) {
   }
 }
 
-Realm::Event RealmContext::issue_fill(ParallelTensorShape const &shape,
-                                      Realm::RegionInstance inst,
-                                      void const *fill_value,
-                                      size_t fill_value_size,
-                                      Realm::ProfilingRequestSet const &requests,
-                                      Realm::Event wait_on,
-                                      int priority) {
+Realm::Event
+    RealmContext::issue_fill(ParallelTensorShape const &shape,
+                             Realm::RegionInstance inst,
+                             void const *fill_value,
+                             size_t fill_value_size,
+                             Realm::ProfilingRequestSet const &requests,
+                             Realm::Event wait_on,
+                             int priority) {
   TensorShape piece_shape = get_piece_shape(shape);
 
   size_t element_size = static_cast<size_t>(

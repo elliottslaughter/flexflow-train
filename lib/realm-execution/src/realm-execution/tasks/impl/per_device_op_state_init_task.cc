@@ -57,8 +57,8 @@ void per_device_op_state_init_task_body(void const *args,
   // destroyed when this task returns, destroying its instances with it. So
   // intentionally leak an allocator for the state to be allocated out of, in
   // the same way the state itself is intentionally leaked below.
-  Allocator *state_allocator = new Allocator{get_realm_allocator(
-      proc, RealmContext::get_nearest_memory(proc))};
+  Allocator *state_allocator = new Allocator{
+      get_realm_allocator(proc, RealmContext::get_nearest_memory(proc))};
 
   DynamicNodeInvocation result_invocation =
       initialize_node(invocation,

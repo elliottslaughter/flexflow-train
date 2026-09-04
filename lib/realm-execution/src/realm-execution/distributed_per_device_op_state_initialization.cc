@@ -5,8 +5,8 @@
 #include "realm-execution/tensor_instance_backing.h"
 #include "task-spec/dynamic_graph/dynamic_node_attrs.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_node_invocation.dtg.h"
-#include "task-spec/dynamic_graph/dynamic_task_type.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_open_dataflow_graph.h"
+#include "task-spec/dynamic_graph/dynamic_task_type.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_value_attrs.dtg.h"
 #include "utils/containers/map_values.h"
 #include "utils/containers/maybe_get_only.h"
@@ -14,9 +14,9 @@
 #include "utils/containers/values.h"
 #include "utils/optional.h"
 #include <map>
-#include <vector>
 #include <optional>
 #include <utility>
+#include <vector>
 
 namespace FlexFlow {
 

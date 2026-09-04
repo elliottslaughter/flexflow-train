@@ -19,11 +19,11 @@
 #include "task-spec/dynamic_graph/dynamic_tensor_role.dtg.h"
 #include "task-spec/fwb_tensor_type.dtg.h"
 #include "task-spec/permissions.h"
-#include "utils/containers/contains_key.h"
 #include "utils/cli/cli_get_help_message.h"
 #include "utils/cli/cli_parse.h"
 #include "utils/cli/cli_parse_result.h"
 #include "utils/cli/cli_spec.h"
+#include "utils/containers/contains_key.h"
 #include "utils/nonnegative_int/nonnegative_int.h"
 #include "utils/positive_int/positive_int.h"
 #include <algorithm>
@@ -187,11 +187,11 @@ static bool get_env_flag(char const *name) {
 
 static LossAttrs parse_loss_attrs(std::string const &name) {
   if (name == "mean_squared_error_avg") {
-    return LossAttrs{NonconfigurableLossAttrs{
-        LossFunction::MEAN_SQUARED_ERROR_AVG_REDUCE}};
+    return LossAttrs{
+        NonconfigurableLossAttrs{LossFunction::MEAN_SQUARED_ERROR_AVG_REDUCE}};
   } else if (name == "mean_squared_error_sum") {
-    return LossAttrs{NonconfigurableLossAttrs{
-        LossFunction::MEAN_SQUARED_ERROR_SUM_REDUCE}};
+    return LossAttrs{
+        NonconfigurableLossAttrs{LossFunction::MEAN_SQUARED_ERROR_SUM_REDUCE}};
   } else if (name == "categorical_crossentropy") {
     return LossAttrs{
         NonconfigurableLossAttrs{LossFunction::CATEGORICAL_CROSSENTROPY}};
