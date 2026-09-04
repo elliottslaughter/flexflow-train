@@ -114,6 +114,7 @@ REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize 27000 -cuda:dynfb 0' FF_LIST_TENSORS=1 \
 | `compare.py`           | end-to-end comparison and the error metrics                    |
 | `check_initialization.py` | checks the weights FlexFlow starts with against PyTorch's rules |
 | `check_training.py`    | smoke test of training from FlexFlow's own initialization       |
+| `compare_training_run.py` | whole training run, iterations left free to overlap         |
 
 ## Backward pass
 
@@ -202,6 +203,36 @@ each task generates its own values from the initializer. The check above passes
 identically whether the values are produced that way or by the controller, which
 is what says the task plumbing is faithful.
 
+## Whole training run
+
+`compare_training_run.py` is the only stage that runs the four stages
+*composed*: FlexFlow initializes its own weights and trains for several
+iterations with nothing re-synchronized in between, and PyTorch is handed those
+same initial weights and runs the identical loop.
+
+It dumps only at the end of the run, deliberately. A per-iteration dump waits on
+the context's outstanding events, which puts a barrier between iterations and
+hides any missing dependency between them -- which is exactly the class of bug
+this stage exists to catch, and did (see below). The finiteness check is the
+load-bearing one.
+
+What it cannot check is the *direction* of a weight update. The end-to-end
+gradient of this network is chaotic: toggling TF32 within PyTorch, with
+identical weights and input, changes the whole-network gradients by about 100%
+relative RMS -- a 3.6% difference in a 24-layer forward pass compounds through
+24 Jacobians on the way back. That is not a property of any one iteration count;
+it is already true after a single step. It is also the reason the rest of this
+harness compares per layer instead of end to end: per-layer comparison is not a
+convenience, it is the only way to get a discriminating number out of this
+model.
+
+What does survive is *magnitude*. The size of each weight's change and the final
+loss are compared against the PyTorch TF32-vs-fp32 pair as a noise floor rather
+than a fixed tolerance. Typical numbers: FlexFlow's weight changes come out at a
+median 0.86x the reference's where the fp32-vs-TF32 control sits at 0.93x, and
+the final loss agrees to a few parts in a thousand against a control spread of
+about the same.
+
 ## Memory
 
 Running a full training iteration is tight on a 32 GB card at batch size 6.
@@ -220,6 +251,18 @@ because the update tasks were never actually being spawned.
 Several bugs had to be fixed before the backward, update and initialization
 paths could be validated at all; they are described in the session notes. What
 remains:
+
+* **A race between iterations, now fixed.** `zero_gradients_for_pcg_instance`
+  issued its fills waiting only on each instance's *allocation* event, which
+  triggers once at startup. The barrier in
+  `execute_distributed_dynamic_node_invocation_set` makes the tasks it spawns
+  depend on the fills, but does nothing to stop the fills running ahead of what
+  came before -- so from the second iteration onwards the fills raced the
+  previous iteration's backward and update tasks. Three runs in six ended with
+  339 of 514 weights NaN; after giving the fills the outstanding events as a
+  precondition, zero in six, and the run-to-run spread halved. Only
+  `compare_training_run.py` sees this, because every other stage dumps per
+  iteration and so inserts the barrier that hides it.
 
 * **Only about 5 training iterations fit before CUDA runs out of memory**, and
   about 18 forward-only ones, at `-ll:fsize 26000`. Lowering `fsize` by 1000 MB
