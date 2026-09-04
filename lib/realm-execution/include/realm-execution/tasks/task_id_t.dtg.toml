@@ -277,6 +277,9 @@ name = "UNIFORM_INIT_TASK_ID"
 name = "NORMAL_INIT_TASK_ID"
 
 [[values]]
+name = "WEIGHT_INIT_TASK_ID"
+
+[[values]]
 name = "NCCL_GETUNIQUEID_TASK_ID"
 
 [[values]]

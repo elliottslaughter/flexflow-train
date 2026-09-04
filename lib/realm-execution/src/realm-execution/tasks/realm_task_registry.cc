@@ -5,6 +5,7 @@
 #include "realm-execution/tasks/impl/op_task.h"
 #include "realm-execution/tasks/impl/per_device_op_state_init_return_task.h"
 #include "realm-execution/tasks/impl/per_device_op_state_init_task.h"
+#include "realm-execution/tasks/impl/weight_init_task.h"
 #include "realm-execution/tasks/task_id_t.h"
 #include "utils/exception.h"
 
@@ -156,6 +157,12 @@ Realm::Event register_all_tasks() {
       register_task(Realm::Processor::LOC_PROC,
                     task_id_t::DEVICE_STATE_INIT_RETURN_TASK_ID,
                     per_device_op_state_init_return_task_body));
+  pending_registrations.push_back(register_task(Realm::Processor::LOC_PROC,
+                                                task_id_t::WEIGHT_INIT_TASK_ID,
+                                                weight_init_task_body));
+  pending_registrations.push_back(register_task(Realm::Processor::TOC_PROC,
+                                                task_id_t::WEIGHT_INIT_TASK_ID,
+                                                weight_init_task_body));
   return Realm::Event::merge_events(pending_registrations);
 }
 
