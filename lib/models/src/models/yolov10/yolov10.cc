@@ -412,6 +412,7 @@ tensor_guid_t
       /*activation=*/std::nullopt,
       /*eps=*/1e-3,
       /*momentum=*/0.03,
+      /*mode=*/BatchNormMode::SPATIAL,
       /*name=*/sub_name(name, ".bn"));
 
   /**
