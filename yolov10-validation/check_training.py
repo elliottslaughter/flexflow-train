@@ -13,7 +13,13 @@ when an initialization is bad:
   dead or saturated (which is why the tracked weights all have to lie upstream
   of the chosen logit -- the class head gets no gradient at all when the loss is
   taken against the box head, and vice versa);
-* every weight actually moves, i.e. the training loop is doing something.
+* every weight stays finite and actually moves, i.e. the training loop is doing
+  something and not destroying the model as it goes.
+
+Note that this dumps once per iteration, which waits on the context's
+outstanding events and so puts a barrier between iterations. That hides races
+*between* iterations; ``compare_training_run.py`` is the one that looks for
+those, by dumping only at the end.
 
 The loss is reported but *not* required to fall. At the learning rate run-model
 uses (1e-3, momentum 0.9) against a random label, neither framework moves it
@@ -94,6 +100,10 @@ def main():
                     f"is training that weight"
                 )
             grad_rmss[name] = grad_rms
+
+        for name in weight_names:
+            if not torch.isfinite(dump[name]).all():
+                failed.append(f"iteration {step}: the weight {name} is not finite")
 
         moved = 0
         if step > 0:

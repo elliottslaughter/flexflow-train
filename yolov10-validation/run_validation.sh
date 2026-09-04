@@ -137,6 +137,30 @@ echo "=== training smoke test ==="
 PYTHONPATH="$HERE" "$PYTHON" "$HERE/check_training.py" \
   --logit model.23.boxes "${TRAIN_ARGS[@]}"
 
+# A second training run, this one dumping only at the end. Dumping every
+# iteration waits on the context's outstanding events, which puts a barrier
+# between iterations and hides any missing dependency between them; this run
+# leaves the iterations free to overlap. See compare_training_run.py.
+echo
+echo "=== training $TRAIN_STEPS iterations with no barrier between them ==="
+ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
+  FF_LOAD_TENSORS='$WORKDIR/input_only.bin,$WORKDIR/label_boxes.bin' \
+  FF_DUMP_TENSORS='$WORKDIR/ff_run_final.bin' \
+  FF_DUMP_NAMES='$WEIGHT_NAMES,model.23.boxes' \
+  FF_LOSS=mean_squared_error_avg FF_LOSS_LOGIT=model.23.boxes \
+  FF_ITERATIONS=$TRAIN_STEPS \
+  nixGL -- ./build/release/bin/run-model/run-model '$WORKDIR/yolov10x_mpcg.json'"
+
+echo
+echo "=== whole training run against PyTorch ==="
+PYTHONPATH="$ULTRALYTICS:$HERE" "$PYTHON" "$HERE/compare_training_run.py" \
+  --initial "$WORKDIR/ff_init_a.bin" \
+  --final "$WORKDIR/ff_run_final.bin" \
+  --input "$WORKDIR/input_only.bin" \
+  --label "$WORKDIR/label_boxes.bin" \
+  --logit model.23.boxes \
+  --steps "$TRAIN_STEPS"
+
 echo
 echo "=== per-layer comparison (each layer fed FlexFlow's own intermediates) ==="
 PYTHONPATH="$ULTRALYTICS:$HERE" "$PYTHON" "$HERE/compare_layerwise.py" \
