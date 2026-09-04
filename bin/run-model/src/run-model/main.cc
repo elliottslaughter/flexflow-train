@@ -1,4 +1,6 @@
 #include "kernels/accessor.h"
+#include "op-attrs/ops/loss_functions/loss_attrs.dtg.h"
+#include "op-attrs/ops/loss_functions/nonconfigurable_loss_attrs.dtg.h"
 #include "op-attrs/parallel_tensor_shape.h"
 #include "op-attrs/tensor_shape.h"
 #include "op-attrs/tensor_slot_name.dtg.h"
@@ -7,9 +9,11 @@
 #include "pcg/mapped_parallel_computation_graph/mapped_parallel_computation_graph.h"
 #include "realm-execution/distributed_ff_handle.h"
 #include "realm-execution/dynamic_tensor_accessor_from_instance.h"
+#include "realm-execution/parallel_loss_config.dtg.h"
 #include "realm-execution/pcg_instance.h"
 #include "realm-execution/realm_context.h"
 #include "realm-execution/realm_manager.h"
+#include "task-spec/dynamic_graph/dynamic_loss_tensor_guid_t.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_node_invocation.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_task_type.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_tensor_role.dtg.h"
@@ -54,14 +58,21 @@ static std::vector<char *> make_realm_args(std::string_view executable_name) {
  * environment variables rather than command-line flags because
  * \ref utils/cli only supports boolean flags and positional arguments.
  *
- * - <tt>FF_LOAD_TENSORS</tt>: path to a tensor file (see \ref TensorFileEntry)
- *   whose contents are copied into the correspondingly-named forward tensors
- *   before running.
+ * - <tt>FF_LOAD_TENSORS</tt>: comma-separated paths to tensor files (see \ref
+ *   TensorFileEntry) whose contents are copied into the correspondingly-named
+ *   forward tensors before running.
  * - <tt>FF_DUMP_TENSORS</tt>: path to write a tensor file to after running.
  * - <tt>FF_DUMP_NAMES</tt>: comma-separated list of tensor names to write to
  *   <tt>FF_DUMP_TENSORS</tt>.
  * - <tt>FF_FORWARD_ONLY</tt>: if set to 1, run only the forward pass (so that
  *   the loaded weights are not modified by the optimizer).
+ * - <tt>FF_LOSS</tt>: the loss function to attach
+ *   (<tt>mean_squared_error_avg</tt>, <tt>mean_squared_error_sum</tt>,
+ *   <tt>categorical_crossentropy</tt> or <tt>identity</tt>). Without a loss
+ *   nothing seeds the gradient of the output and the backward pass computes
+ *   only zeros.
+ * - <tt>FF_LOSS_LOGIT</tt>: the name of the tensor the loss is taken against.
+ *   Set together with <tt>FF_LOSS</tt>.
  * - <tt>FF_ITERATIONS</tt>: number of iterations to run (default 5).
  * - <tt>FF_LIST_TENSORS</tt>: if set to 1, print the name and shape of every
  *   nameable forward tensor and exit.
@@ -69,7 +80,9 @@ static std::vector<char *> make_realm_args(std::string_view executable_name) {
  * A tensor is named after the layer that produces it, so, e.g., the weights of
  * the layer named <tt>model.0.conv</tt> are named
  * <tt>model.0.conv.FILTER</tt>, and the output of that layer is named
- * <tt>model.0.conv</tt>.
+ * <tt>model.0.conv</tt>. A tensor's gradient takes the same name with a
+ * <tt>grad:</tt> prefix, and the label tensor created by loss insertion is
+ * named <tt>label</tt>.
  * \{
  */
 
@@ -170,6 +183,23 @@ static bool get_env_flag(char const *name) {
   return get_env(name) == std::optional<std::string>{"1"};
 }
 
+static LossAttrs parse_loss_attrs(std::string const &name) {
+  if (name == "mean_squared_error_avg") {
+    return LossAttrs{NonconfigurableLossAttrs{
+        LossFunction::MEAN_SQUARED_ERROR_AVG_REDUCE}};
+  } else if (name == "mean_squared_error_sum") {
+    return LossAttrs{NonconfigurableLossAttrs{
+        LossFunction::MEAN_SQUARED_ERROR_SUM_REDUCE}};
+  } else if (name == "categorical_crossentropy") {
+    return LossAttrs{
+        NonconfigurableLossAttrs{LossFunction::CATEGORICAL_CROSSENTROPY}};
+  } else if (name == "identity") {
+    return LossAttrs{NonconfigurableLossAttrs{LossFunction::IDENTITY}};
+  } else {
+    PANIC("Unknown loss function", name);
+  }
+}
+
 static std::vector<std::string> split_on_commas(std::string const &s) {
   std::vector<std::string> result;
   std::string current;
@@ -205,9 +235,8 @@ static std::string strip_quotes(std::string s) {
  * A tensor takes the name of the layer that produces it (see
  * \ref ComputationGraphBuilder::add_layer for how weights get their names).
  */
-static std::map<std::string, DynamicValueAttrs>
-    get_named_forward_values(MappedParallelComputationGraph const &mpcg,
-                             PCGInstance const &pcg_instance) {
+static std::map<parallel_tensor_guid_t, std::string>
+    get_parallel_tensor_names(MappedParallelComputationGraph const &mpcg) {
   std::map<parallel_tensor_guid_t, std::string> tensor_names;
   for (parallel_layer_guid_t layer : mpcg_get_parallel_layers(mpcg)) {
     MappedParallelLayerAttrs attrs = mpcg.raw_graph.at(layer.raw_graph_node);
@@ -227,10 +256,30 @@ static std::map<std::string, DynamicValueAttrs>
       }
     }
   }
+  return tensor_names;
+}
+
+/**
+ * \brief The name given to the label tensor that loss insertion creates.
+ *
+ * The label lies outside the computation graph, so unlike every other tensor it
+ * is not named after a layer.
+ */
+static constexpr char LABEL_TENSOR_NAME[] = "label";
+
+static std::map<std::string, DynamicValueAttrs>
+    get_named_forward_values(MappedParallelComputationGraph const &mpcg,
+                             PCGInstance const &pcg_instance) {
+  std::map<parallel_tensor_guid_t, std::string> tensor_names =
+      get_parallel_tensor_names(mpcg);
 
   std::map<std::string, std::vector<DynamicValueAttrs>> candidates;
   for (auto const &[value, instance] :
        pcg_instance.get_tensor_instance_backing().backing) {
+    if (value.tensor_guid.has<dynamic_loss_tensor_guid_t>()) {
+      candidates[LABEL_TENSOR_NAME].push_back(value);
+      continue;
+    }
     if (!value.tensor_guid.has<parallel_tensor_guid_t>()) {
       continue;
     }
@@ -269,6 +318,89 @@ static std::map<std::string, DynamicValueAttrs>
   }
 
   return result;
+}
+
+/**
+ * \brief Build the loss configuration that seeds the gradient of the tensor
+ * named \p logit_name.
+ *
+ * Without a loss there is nothing to start the backward pass from, so every
+ * gradient comes out zero.
+ */
+static ParallelLossConfig
+    make_loss_config(MappedParallelComputationGraph const &mpcg,
+                     RealmContext &ctx,
+                     LossAttrs const &loss_attrs,
+                     std::string const &logit_name) {
+  std::map<parallel_tensor_guid_t, std::string> tensor_names =
+      get_parallel_tensor_names(mpcg);
+
+  std::optional<parallel_tensor_guid_t> logit_tensor = std::nullopt;
+  for (auto const &[tensor, name] : tensor_names) {
+    if (name == logit_name) {
+      ASSERT(logit_tensor == std::nullopt,
+             "more than one tensor has the requested logit name",
+             logit_name);
+      logit_tensor = tensor;
+    }
+  }
+  ASSERT(logit_tensor.has_value(),
+         "no tensor in the model has the requested logit name",
+         logit_name);
+
+  parallel_layer_guid_t logit_layer =
+      mpcg_get_source_layer(mpcg, logit_tensor.value());
+
+  TensorSlotName logit_slot = [&] {
+    for (auto const &[slot, tensor] :
+         mpcg_get_outgoing_tensors(mpcg, logit_layer)) {
+      if (tensor == logit_tensor.value()) {
+        return slot;
+      }
+    }
+    PANIC("logit tensor is not produced by its own source layer", logit_name);
+  }();
+
+  // The loss node consumes the label (in slot INPUT) and the logit (in slot
+  // LOGIT), both of which have the same shape and sharding as the logit. So its
+  // task group is the task group of the layer producing the logit, with that
+  // layer's coordinate for the logit bound to both of the loss node's slots.
+  // Held in a local because get_shard_bindings() returns a reference into the
+  // task group, which a range-for does not keep alive if it is a temporary.
+  MappedOperatorTaskGroup logit_layer_group =
+      mpcg_get_mapping_for_layer(mpcg, logit_layer);
+
+  bidict<MachineSpaceCoordinate, OperatorAtomicTaskShardBinding> loss_bindings;
+  for (auto const &[machine_coord, binding] :
+       logit_layer_group.get_shard_bindings()) {
+    ParallelTensorSpaceCoordinate logit_coord =
+        binding.tensor_coords.at(logit_slot);
+
+    loss_bindings.equate(machine_coord,
+                         OperatorAtomicTaskShardBinding{{
+                             {TensorSlotName::INPUT, logit_coord},
+                             {TensorSlotName::LOGIT, logit_coord},
+                         }});
+  }
+
+  ParallelTensorShape logit_shape =
+      mpcg_get_parallel_tensor_attrs(mpcg, logit_tensor.value()).shape;
+
+  // create_pcg_instance wants a label accessor, but it keys it on a
+  // pre-shard-expansion value that no longer matches anything by the time
+  // instance allocation runs, so the accessor is dropped and an instance is
+  // allocated for the label like for any other tensor. Fill that instance by
+  // name (see LABEL_TENSOR_NAME) instead of relying on this accessor.
+  GenericTensorAccessorW label_tensor =
+      ctx.get_current_device_allocator().allocate_tensor(
+          get_piece_shape(logit_shape));
+
+  return ParallelLossConfig{
+      /*loss_attrs=*/loss_attrs,
+      /*label_tensor=*/read_only_accessor_from_write_accessor(label_tensor),
+      /*logit_tensor=*/logit_tensor.value(),
+      /*loss_mapping=*/MappedOperatorTaskGroup{loss_bindings},
+  };
 }
 
 /**
@@ -338,11 +470,15 @@ int main(int argc, char **argv) {
 
   std::string mapped_pcg_json = cli_get_argument(parsed, key_mapped_pcg_json);
 
-  std::optional<std::string> load_tensors_path = get_env("FF_LOAD_TENSORS");
+  std::optional<std::string> load_tensors_paths = get_env("FF_LOAD_TENSORS");
   std::optional<std::string> dump_tensors_path = get_env("FF_DUMP_TENSORS");
   std::vector<std::string> dump_tensor_names =
       split_on_commas(get_env("FF_DUMP_NAMES").value_or(""));
   bool forward_only = get_env_flag("FF_FORWARD_ONLY");
+  std::optional<std::string> loss_name = get_env("FF_LOSS");
+  std::optional<std::string> loss_logit_name = get_env("FF_LOSS_LOGIT");
+  ASSERT(loss_name.has_value() == loss_logit_name.has_value(),
+         "FF_LOSS and FF_LOSS_LOGIT must be set together");
   bool list_tensors = get_env_flag("FF_LIST_TENSORS");
   int num_iterations =
       std::stoi(get_env("FF_ITERATIONS").value_or(std::string{"5"}));
@@ -381,11 +517,20 @@ int main(int argc, char **argv) {
           return pq.count() > 0;
         }();
 
+        std::optional<ParallelLossConfig> loss = std::nullopt;
+        if (loss_name.has_value()) {
+          loss = make_loss_config(/*mpcg=*/mpcg,
+                                  /*ctx=*/ctx,
+                                  /*loss_attrs=*/
+                                  parse_loss_attrs(loss_name.value()),
+                                  /*logit_name=*/loss_logit_name.value());
+        }
+
         PCGInstance pcg_instance = create_pcg_instance(
             /*ctx=*/ctx,
             /*mpcg=*/mpcg,
             /*optimizer=*/optimizer_attrs,
-            /*loss=*/std::nullopt,
+            /*loss=*/loss,
             /*input_tensors=*/input_tensors,
             /*profiling_settings=*/ProfilingSettings{0, 1},
             /*device_handle=*/device_handle,
@@ -416,9 +561,9 @@ int main(int argc, char **argv) {
           return;
         }
 
-        if (load_tensors_path.has_value()) {
-          std::vector<TensorFileEntry> entries =
-              read_tensor_file(load_tensors_path.value());
+        for (std::string const &path :
+             split_on_commas(load_tensors_paths.value_or(""))) {
+          std::vector<TensorFileEntry> entries = read_tensor_file(path);
           for (TensorFileEntry const &entry : entries) {
             ASSERT(contains_key(named_values, entry.name),
                    "tensor file contains a tensor that is not present in the "
@@ -442,8 +587,7 @@ int main(int argc, char **argv) {
             copy_accessor_data_to_l_from_r(dst, src);
           }
           std::cerr << "run-model: loaded " << entries.size()
-                    << " tensors from " << load_tensors_path.value()
-                    << std::endl;
+                    << " tensors from " << path << std::endl;
         }
 
         // begin training loop
