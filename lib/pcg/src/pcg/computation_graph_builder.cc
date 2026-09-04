@@ -47,11 +47,11 @@
 #include "utils/containers/transform_until.h"
 #include "utils/containers/vector_of.h"
 #include "utils/containers/without_nullopts.h"
-#include "utils/containers/zip_values_strict_with.h"
 #include "utils/containers/zip_with_strict.h"
 #include "utils/expected.h"
 #include "utils/fmt/set.h"
 #include "utils/stack_vector/stack_vector_of.h"
+#include <algorithm>
 #include <fmt/format.h>
 
 namespace FlexFlow {
@@ -144,12 +144,29 @@ std::map<TensorSlotName, tensor_guid_t> ComputationGraphBuilder::add_layer(
   std::map<TensorSlotName, TensorShape> weight_shapes =
       get_weight_shapes(layer.op_attrs, input_shapes);
 
-  std::map<TensorSlotName, tensor_guid_t> weights = zip_values_strict_with(
-      weight_shapes,
-      weight_initializers,
-      [&](TensorShape const &shape, InitializerAttrs const &initializer) {
-        return this->create_weight(shape, initializer);
-      });
+  // Give each created weight a name derived from the name of the layer that
+  // consumes it and the slot it is consumed in (e.g., a layer named
+  // "model.0.conv" gets a weight named "model.0.conv.FILTER"). This makes it
+  // possible to identify individual weight tensors by name at execution time,
+  // which is needed to be able to load in externally-provided weights.
+  ASSERT(keys(weight_shapes) == keys(weight_initializers));
+  std::map<TensorSlotName, tensor_guid_t> weights;
+  for (auto const &[slot_name, shape] : weight_shapes) {
+    std::optional<std::string> weight_name = std::nullopt;
+    if (layer.name.has_value()) {
+      // format_as(TensorSlotName) renders as a quoted string (e.g., "FILTER"),
+      // so strip the quotes to keep the resulting names readable.
+      std::string slot_str = format_as(slot_name);
+      slot_str.erase(std::remove(slot_str.begin(), slot_str.end(), '"'),
+                     slot_str.end());
+      weight_name = fmt::format("{}.{}", layer.name.value(), slot_str);
+    }
+    weights.insert({
+        slot_name,
+        this->create_weight(
+            shape, weight_initializers.at(slot_name), weight_name),
+    });
+  }
 
   LayerAddedResult added = ::FlexFlow::add_layer(
       this->computation_graph, layer, inputs, weights, outputs);
