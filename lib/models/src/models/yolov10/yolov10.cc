@@ -25,6 +25,7 @@
 #include "utils/overload.h"
 #include <algorithm>
 #include <cmath>
+#include <fmt/format.h>
 #include <optional>
 #include <vector>
 
@@ -66,6 +67,36 @@ static positive_int resolve_num_input_channels(
   };
 
   return tensor_num_input_channels;
+}
+
+/**
+ * \brief Build the name of a submodule of the module named \p name, or
+ * <tt>std::nullopt</tt> if \p name is empty (i.e., the enclosing module is
+ * unnamed).
+ *
+ * Names are chosen to match the corresponding module paths in ultralytics
+ * (e.g., <tt>model.0.conv</tt>), which makes it possible to correlate
+ * FlexFlow's weights with ultralytics' weights by name.
+ */
+static std::optional<std::string> sub_name(std::string const &name,
+                                           std::string const &suffix) {
+  if (name.empty()) {
+    return std::nullopt;
+  }
+  return name + suffix;
+}
+
+/**
+ * \brief Same as \ref sub_name, but returns a <tt>std::string</tt> suitable
+ * for passing down to another <tt>create_yolov10_*</tt> function (which take
+ * the empty string to mean "unnamed").
+ */
+static std::string sub_prefix(std::string const &name,
+                              std::string const &suffix) {
+  if (name.empty()) {
+    return "";
+  }
+  return name + suffix;
 }
 
 static tensor_guid_t
@@ -469,7 +500,8 @@ tensor_guid_t
                                std::optional<positive_int> groups,
                                std::optional<bool> use_activation,
                                std::optional<positive_int> dilation,
-                               std::optional<nonnegative_int> padding) {
+                               std::optional<nonnegative_int> padding,
+                               std::string const &name) {
 
   /**
    * Default values pulled from
@@ -504,7 +536,11 @@ tensor_guid_t
       /*paddingW=*/resolved_padding,
       /*activation=*/std::nullopt,
       /*groups=*/resolved_groups,
-      /*use_bias=*/false);
+      /*use_bias=*/false,
+      /*kernel_initializer=*/std::nullopt,
+      /*bias_initializer=*/std::nullopt,
+      /*kernel_regularizer=*/std::nullopt,
+      /*name=*/sub_name(name, ".conv"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/conv.py#L66
@@ -529,7 +565,7 @@ tensor_guid_t
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/conv.py#L49
    */
   if (resolved_use_activation) {
-    out = cgb.silu(out);
+    out = cgb.silu(out, /*name=*/sub_name(name, ".act"));
   }
 
   return out;
@@ -541,7 +577,8 @@ tensor_guid_t create_yolov10_scdown_module(
     std::optional<positive_int> const &num_input_channels,
     std::optional<positive_int> const &num_output_channels,
     std::optional<positive_int> const &kernel_size,
-    std::optional<positive_int> const &stride) {
+    std::optional<positive_int> const &stride,
+    std::string const &name) {
   positive_int resolved_num_input_channels =
       resolve_num_input_channels(cgb, input_tensor, num_input_channels);
   positive_int resolved_num_output_channels =
@@ -556,7 +593,12 @@ tensor_guid_t create_yolov10_scdown_module(
       /*num_input_channels=*/resolved_num_input_channels,
       /*num_output_channels=*/resolved_num_output_channels,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1564
@@ -569,7 +611,10 @@ tensor_guid_t create_yolov10_scdown_module(
       /*kernel_size=*/kernel_size,
       /*stride=*/stride,
       /*groups=*/resolved_num_output_channels,
-      /*use_activation=*/false);
+      /*use_activation=*/false,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv2"));
 
   return t;
 }
@@ -581,7 +626,8 @@ tensor_guid_t create_yolov10_sppf_module(
     std::optional<positive_int> const &num_output_channels,
     std::optional<positive_int> const &kernel_size,
     std::optional<positive_int> const &num_pooling_iterations,
-    std::optional<bool> const &use_shortcut_connection) {
+    std::optional<bool> const &use_shortcut_connection,
+    std::string const &name) {
 
   /**
    * Default values pulled from
@@ -612,7 +658,10 @@ tensor_guid_t create_yolov10_sppf_module(
       /*kernel_size=*/1_p,
       /*stride=*/1_p,
       /*groups=*/1_p,
-      /*use_activation=*/false);
+      /*use_activation=*/false,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L228
@@ -663,7 +712,12 @@ tensor_guid_t create_yolov10_sppf_module(
       /*num_input_channels=*/cat_channels,
       /*num_output_channels=*/resolved_num_output_channels,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv2"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L237
@@ -681,7 +735,8 @@ tensor_guid_t
                                     tensor_guid_t const &input_tensor,
                                     positive_int num_input_channels,
                                     std::optional<positive_int> num_heads,
-                                    std::optional<float> attn_ratio) {
+                                    std::optional<float> attn_ratio,
+                                    std::string const &name) {
   /**
    * Default values pulled from
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1289
@@ -716,7 +771,10 @@ tensor_guid_t
       /*kernel_size=*/1_p,
       /*stride=*/1_p,
       /*groups=*/1_p,
-      /*use_activation=*/false);
+      /*use_activation=*/false,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".qkv"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1320
@@ -774,7 +832,10 @@ tensor_guid_t
           /*kernel_size=*/3_p,
           /*stride=*/1_p,
           /*groups=*/C,
-          /*use_activation=*/false));
+          /*use_activation=*/false,
+          /*dilation=*/std::nullopt,
+          /*padding=*/std::nullopt,
+          /*name=*/sub_prefix(name, ".pe")));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1327
@@ -787,7 +848,10 @@ tensor_guid_t
       /*kernel_size=*/1_p,
       /*stride=*/1_p,
       /*groups=*/1_p,
-      /*use_activation=*/false);
+      /*use_activation=*/false,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".proj"));
 
   return xx;
 }
@@ -797,7 +861,8 @@ tensor_guid_t create_yolov10_psa_module(
     tensor_guid_t const &input_tensor,
     std::optional<positive_int> const &num_input_channels,
     std::optional<positive_int> const &num_output_channels,
-    std::optional<float> const &expansion_ratio) {
+    std::optional<float> const &expansion_ratio,
+    std::string const &name) {
   /**
    * Default values pulled from
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1404
@@ -831,7 +896,12 @@ tensor_guid_t create_yolov10_psa_module(
       /*num_input_channels=*/resolved_num_input_channels,
       /*num_output_channels=*/2_p * c,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1430
@@ -858,7 +928,8 @@ tensor_guid_t create_yolov10_psa_module(
                          /*input_tensor=*/b_tensor,
                          /*num_input_channels=*/c,
                          /*num_heads=*/positive_int{std::max(c / 64_p, 1_n)},
-                         /*attn_ratio=*/0.5f));
+                         /*attn_ratio=*/0.5f,
+                         /*name=*/sub_prefix(name, ".attn")));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1432
@@ -873,7 +944,12 @@ tensor_guid_t create_yolov10_psa_module(
       /*num_input_channels=*/c,
       /*num_output_channels=*/c * 2_p,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".ffn.0"));
 
   tensor_guid_t ffn2 = create_yolov10_conv_module(
       /*cgb=*/cgb,
@@ -883,7 +959,10 @@ tensor_guid_t create_yolov10_psa_module(
       /*kernel_size=*/1_p,
       /*stride=*/1_p,
       /*groups=*/1_p,
-      /*use_activation=*/false);
+      /*use_activation=*/false,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".ffn.1"));
 
   b_tensor = cgb.add(/*x=*/b_tensor, /*y=*/ffn2);
 
@@ -901,7 +980,12 @@ tensor_guid_t create_yolov10_psa_module(
       /*num_input_channels=*/2_p * c,
       /*num_output_channels=*/resolved_num_output_channels,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv2"));
 }
 
 tensor_guid_t create_yolov10_bottleneck_module(
@@ -913,7 +997,8 @@ tensor_guid_t create_yolov10_bottleneck_module(
     std::optional<positive_int> const &groups,
     std::optional<positive_int> const &kernel_size_1,
     std::optional<positive_int> const &kernel_size_2,
-    std::optional<float> const &expansion_ratio) {
+    std::optional<float> const &expansion_ratio,
+    std::string const &name) {
   /**
    * Default values pulled from
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L461
@@ -949,7 +1034,12 @@ tensor_guid_t create_yolov10_bottleneck_module(
       /*num_input_channels=*/resolved_num_input_channels,
       /*num_output_channels=*/c_hidden,
       /*kernel_size=*/resolved_kernel_size_1,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L476
@@ -962,7 +1052,12 @@ tensor_guid_t create_yolov10_bottleneck_module(
       /*num_input_channels=*/c_hidden,
       /*num_output_channels=*/resolved_num_output_channels,
       /*kernel_size=*/resolved_kernel_size_2,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv2"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L481
@@ -983,7 +1078,8 @@ tensor_guid_t create_yolov10_c2f_module(
     std::optional<positive_int> const &num_bottleneck_blocks,
     std::optional<bool> const &use_shortcut_connection,
     std::optional<positive_int> const &groups,
-    std::optional<float> const &expansion_ratio) {
+    std::optional<float> const &expansion_ratio,
+    std::string const &name) {
   /**
    * Default values pulled from
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L291
@@ -1018,7 +1114,12 @@ tensor_guid_t create_yolov10_c2f_module(
       /*num_input_channels=*/resolved_num_input_channels,
       /*num_output_channels=*/2_p * c_hidden,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L310
@@ -1041,6 +1142,7 @@ tensor_guid_t create_yolov10_c2f_module(
    * m = ModuleList(Bottleneck(c, c, shortcut, g, e=1.0) for _ in range(n))
    * forward: y.extend(m(y[-1]) for m in self.m)
    */
+  int bottleneck_idx = 0;
   std::vector<tensor_guid_t> additional_y_tensors = tail(iterate_n(
       resolved_num_bottleneck_blocks.nonnegative_int_from_positive_int(),
       y_tensors.back(),
@@ -1054,7 +1156,9 @@ tensor_guid_t create_yolov10_c2f_module(
             /*groups=*/resolved_groups,
             /*kernel_size_1=*/3_p,
             /*kernel_size_2=*/3_p,
-            /*expansion_ratio=*/1.0f);
+            /*expansion_ratio=*/1.0f,
+            /*name=*/
+            sub_prefix(name, fmt::format(".m.{}", bottleneck_idx++)));
       }));
 
   extend(y_tensors, additional_y_tensors);
@@ -1078,7 +1182,12 @@ tensor_guid_t create_yolov10_c2f_module(
       /*num_input_channels=*/cat_channels,
       /*num_output_channels=*/resolved_num_output_channels,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv2"));
 
   return cv2;
 }
@@ -1086,7 +1195,8 @@ tensor_guid_t create_yolov10_c2f_module(
 tensor_guid_t
     create_yolov10_rep_vggdw_module(ComputationGraphBuilder &cgb,
                                     tensor_guid_t const &input_tensor,
-                                    positive_int const &num_channels) {
+                                    positive_int const &num_channels,
+                                    std::string const &name) {
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1140
    */
@@ -1100,7 +1210,8 @@ tensor_guid_t
       /*groups=*/num_channels,
       /*use_activation=*/false,
       /*dilation=*/std::nullopt,
-      /*padding=*/3_n);
+      /*padding=*/3_n,
+      /*name=*/sub_prefix(name, ".conv"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1141
@@ -1115,14 +1226,15 @@ tensor_guid_t
       /*groups=*/num_channels,
       /*use_activation=*/false,
       /*dilation=*/std::nullopt,
-      /*padding=*/1_n);
+      /*padding=*/1_n,
+      /*name=*/sub_prefix(name, ".conv1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1143
    * and 
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1154
    */
-  return cgb.silu(cgb.add(y1, y2));
+  return cgb.silu(cgb.add(y1, y2), /*name=*/sub_name(name, ".act"));
 }
 
 tensor_guid_t create_yolov10_cib_module(
@@ -1132,7 +1244,8 @@ tensor_guid_t create_yolov10_cib_module(
     std::optional<positive_int> const &num_output_channels,
     std::optional<bool> const &use_shortcut_connection,
     std::optional<bool> const &use_large_kernel,
-    std::optional<float> const &expansion_ratio) {
+    std::optional<float> const &expansion_ratio,
+    std::string const &name) {
 
   /**
    * Default values pulled from
@@ -1171,7 +1284,11 @@ tensor_guid_t create_yolov10_cib_module(
       /*num_output_channels=*/resolved_num_input_channels,
       /*kernel_size=*/3_p,
       /*stride=*/1_p,
-      /*groups=*/resolved_num_input_channels);
+      /*groups=*/resolved_num_input_channels,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1.0"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1220
@@ -1184,7 +1301,12 @@ tensor_guid_t create_yolov10_cib_module(
       /*num_input_channels=*/resolved_num_input_channels,
       /*num_output_channels=*/2_p * c_hidden,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1.1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1221
@@ -1197,7 +1319,8 @@ tensor_guid_t create_yolov10_cib_module(
                          ? create_yolov10_rep_vggdw_module(
                                /*cgb=*/cgb,
                                /*input_tensor=*/y2,
-                               /*num_channels=*/2_p * c_hidden)
+                               /*num_channels=*/2_p * c_hidden,
+                               /*name=*/sub_prefix(name, ".cv1.2"))
                          : create_yolov10_conv_module(
                                /*cgb=*/cgb,
                                /*input_tensor=*/y2,
@@ -1205,7 +1328,11 @@ tensor_guid_t create_yolov10_cib_module(
                                /*num_output_channels=*/2_p * c_hidden,
                                /*kernel_size=*/3_p,
                                /*stride=*/1_p,
-                               /*groups=*/2_p * c_hidden);
+                               /*groups=*/2_p * c_hidden,
+                               /*use_activation=*/std::nullopt,
+                               /*dilation=*/std::nullopt,
+                               /*padding=*/std::nullopt,
+                               /*name=*/sub_prefix(name, ".cv1.2"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1222
@@ -1218,7 +1345,12 @@ tensor_guid_t create_yolov10_cib_module(
       /*num_input_channels=*/2_p * c_hidden,
       /*num_output_channels=*/resolved_num_output_channels,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1.3"));
 
   /*
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1223
@@ -1231,7 +1363,11 @@ tensor_guid_t create_yolov10_cib_module(
       /*num_output_channels=*/resolved_num_output_channels,
       /*kernel_size=*/3_p,
       /*stride=*/1_p,
-      /*groups=*/resolved_num_output_channels);
+      /*groups=*/resolved_num_output_channels,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1.4"));
 
   /*
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1237
@@ -1253,7 +1389,8 @@ tensor_guid_t create_yolov10_c2fcib_module(
     std::optional<bool> use_shortcut_connection,
     std::optional<bool> use_large_kernel,
     std::optional<positive_int> const &groups,
-    std::optional<float> const &expansion_ratio) {
+    std::optional<float> const &expansion_ratio,
+    std::string const &name) {
   /**
    * Default values are pulled from
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L1254
@@ -1291,7 +1428,12 @@ tensor_guid_t create_yolov10_c2fcib_module(
       /*num_input_channels=*/resolved_num_input_channels,
       /*num_output_channels=*/2_p * c_hidden,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/block.py#L316
@@ -1313,6 +1455,7 @@ tensor_guid_t create_yolov10_c2fcib_module(
    *
    * m = ModuleList(CIB(c_hidden, c_hidden, shortcut, e=1.0) for _ in range(n))
    */
+  int cib_idx = 0;
   std::vector<tensor_guid_t> additional_y_tensors = tail(iterate_n(
       resolved_num_cib_modules_to_stack.nonnegative_int_from_positive_int(),
       y_tensors.back(),
@@ -1324,7 +1467,8 @@ tensor_guid_t create_yolov10_c2fcib_module(
             /*num_output_channels=*/c_hidden,
             /*use_shortcut_connection=*/resolved_use_shortcut_connection,
             /*use_large_kernel=*/resolved_use_large_kernel,
-            /*expansion_ratio=*/1.0f);
+            /*expansion_ratio=*/1.0f,
+            /*name=*/sub_prefix(name, fmt::format(".m.{}", cib_idx++)));
 
         return bn;
       }));
@@ -1353,7 +1497,12 @@ tensor_guid_t create_yolov10_c2fcib_module(
       /*num_input_channels=*/cat_channels,
       /*num_output_channels=*/resolved_num_output_channels,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".cv2"));
 
   return cv2;
 }
@@ -1362,7 +1511,8 @@ tensor_guid_t
     create_yolov10_v10detect_box_head(ComputationGraphBuilder &cgb,
                                       tensor_guid_t const &input_tensor,
                                       positive_int c2,
-                                      positive_int reg_max) {
+                                      positive_int reg_max,
+                                      std::string const &name) {
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/head.py#L106
@@ -1375,7 +1525,12 @@ tensor_guid_t
       /*num_input_channels=*/get_tensor_num_channels(cgb, input_tensor),
       /*num_output_channels=*/c2,
       /*kernel_size=*/3_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".0"));
 
   t = create_yolov10_conv_module(
       /*cgb=*/cgb,
@@ -1383,7 +1538,12 @@ tensor_guid_t
       /*num_input_channels=*/c2,
       /*num_output_channels=*/c2,
       /*kernel_size=*/3_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".1"));
 
   return cgb.conv2d(
       /*input=*/t,
@@ -1393,14 +1553,22 @@ tensor_guid_t
       /*strideH=*/1_p,
       /*strideW=*/1_p,
       /*paddingH=*/0_n,
-      /*paddingW=*/0_n);
+      /*paddingW=*/0_n,
+      /*activation=*/std::nullopt,
+      /*groups=*/1_p,
+      /*use_bias=*/true,
+      /*kernel_initializer=*/std::nullopt,
+      /*bias_initializer=*/std::nullopt,
+      /*kernel_regularizer=*/std::nullopt,
+      /*name=*/sub_name(name, ".2"));
 }
 
 tensor_guid_t
     create_yolov10_v10detect_cls_head(ComputationGraphBuilder &cgb,
                                       tensor_guid_t const &input_tensor,
                                       positive_int c3,
-                                      positive_int num_classes) {
+                                      positive_int num_classes,
+                                      std::string const &name) {
 
   positive_int x = get_tensor_num_channels(cgb, input_tensor);
 
@@ -1416,7 +1584,11 @@ tensor_guid_t
       /*num_output_channels=*/x,
       /*kernel_size=*/3_p,
       /*stride=*/1_p,
-      /*groups=*/x);
+      /*groups=*/x,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".0.0"));
 
   t = create_yolov10_conv_module(
       /*cgb=*/cgb,
@@ -1424,7 +1596,12 @@ tensor_guid_t
       /*num_input_channels=*/x,
       /*num_output_channels=*/c3,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".0.1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/head.py#L1801
@@ -1438,7 +1615,11 @@ tensor_guid_t
       /*num_output_channels=*/c3,
       /*kernel_size=*/3_p,
       /*stride=*/1_p,
-      /*groups=*/c3);
+      /*groups=*/c3,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".1.0"));
 
   t = create_yolov10_conv_module(
       /*cgb=*/cgb,
@@ -1446,7 +1627,12 @@ tensor_guid_t
       /*num_input_channels=*/c3,
       /*num_output_channels=*/c3,
       /*kernel_size=*/1_p,
-      /*stride=*/1_p);
+      /*stride=*/1_p,
+      /*groups=*/std::nullopt,
+      /*use_activation=*/std::nullopt,
+      /*dilation=*/std::nullopt,
+      /*padding=*/std::nullopt,
+      /*name=*/sub_prefix(name, ".1.1"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/head.py#L1802
@@ -1461,14 +1647,22 @@ tensor_guid_t
       /*strideH=*/1_p,
       /*strideW=*/1_p,
       /*paddingH=*/0_n,
-      /*paddingW=*/0_n);
+      /*paddingW=*/0_n,
+      /*activation=*/std::nullopt,
+      /*groups=*/1_p,
+      /*use_bias=*/true,
+      /*kernel_initializer=*/std::nullopt,
+      /*bias_initializer=*/std::nullopt,
+      /*kernel_regularizer=*/std::nullopt,
+      /*name=*/sub_name(name, ".2"));
 }
 
 YOLOv10DetectHeadOutputs create_yolov10_v10detect_module(
     ComputationGraphBuilder &cgb,
     std::vector<tensor_guid_t> const &input_tensors,
     positive_int num_classes,
-    std::optional<positive_int> reg_max) {
+    std::optional<positive_int> reg_max,
+    std::string const &name) {
 
   /**
    * Default values pulled from
@@ -1508,6 +1702,7 @@ YOLOv10DetectHeadOutputs create_yolov10_v10detect_module(
         return dim_at_idx(t_shape.dims, ff_dim_t{0_n});
       }));
 
+  int box_head_idx = 0;
   std::vector<tensor_guid_t> box_cat_inputs =
       transform(input_tensors, [&](tensor_guid_t t) -> tensor_guid_t {
         TensorShape t_shape = cgb.get_shape(t);
@@ -1519,7 +1714,9 @@ YOLOv10DetectHeadOutputs create_yolov10_v10detect_module(
                 /*cgb=*/cgb,
                 /*input_tensor=*/t,
                 /*c2=*/c2,
-                /*reg_max=*/resolved_reg_max),
+                /*reg_max=*/resolved_reg_max,
+                /*name=*/
+                sub_prefix(name, fmt::format(".cv2.{}", box_head_idx++))),
             /*shape=*/std::vector<positive_int>{
                 batch_size,
                 4_p * resolved_reg_max,
@@ -1528,11 +1725,13 @@ YOLOv10DetectHeadOutputs create_yolov10_v10detect_module(
       });
 
   tensor_guid_t boxes = cgb.concat(box_cat_inputs,
-                                   /*axis=*/relative_ff_dim_t{-1});
+                                   /*axis=*/relative_ff_dim_t{-1},
+                                   /*name=*/sub_name(name, ".boxes"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/head.py#L154
    */
+  int cls_head_idx = 0;
   std::vector<tensor_guid_t> cls_cat_inputs =
       transform(input_tensors, [&](tensor_guid_t t) -> tensor_guid_t {
         TensorShape t_shape = cgb.get_shape(t);
@@ -1544,7 +1743,9 @@ YOLOv10DetectHeadOutputs create_yolov10_v10detect_module(
                 /*cgb=*/cgb,
                 /*input_tensor=*/t,
                 /*c3=*/c3,
-                /*num_classes=*/num_classes),
+                /*num_classes=*/num_classes,
+                /*name=*/
+                sub_prefix(name, fmt::format(".cv3.{}", cls_head_idx++))),
             /*shape=*/std::vector<positive_int>{
                 batch_size,
                 num_classes,
@@ -1553,7 +1754,8 @@ YOLOv10DetectHeadOutputs create_yolov10_v10detect_module(
       });
 
   tensor_guid_t scores = cgb.concat(cls_cat_inputs,
-                                    /*axis=*/relative_ff_dim_t{-1});
+                                    /*axis=*/relative_ff_dim_t{-1},
+                                    /*name=*/sub_name(name, ".scores"));
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/nn/modules/head.py#L155
@@ -1571,7 +1773,8 @@ tensor_guid_t
                          YOLOv10LayerConfig const &layer_config,
                          positive_int num_classes,
                          YOLOv10ScalingConfig const &scaling_config,
-                         std::vector<tensor_guid_t> const &past_layer_outputs) {
+                         std::vector<tensor_guid_t> const &past_layer_outputs,
+                         std::string const &name) {
 
   /**
    * https://github.com/ultralytics/ultralytics/blob/f8ad132a15b5f6818c2ce0647b40dc57e993bf0c/ultralytics/utils/ops.py#L145-L157
@@ -1633,7 +1836,10 @@ tensor_guid_t
             handle_output_channel_scaling(config.num_output_channels),
             /*num_bottleneck_blocks=*/
             handle_depth_scaling(config.num_bottleneck_blocks),
-            /*use_shortcut_connection=*/config.use_shortcut_connection);
+            /*use_shortcut_connection=*/config.use_shortcut_connection,
+            /*groups=*/std::nullopt,
+            /*expansion_ratio=*/std::nullopt,
+            /*name=*/name);
       },
       [&](YOLOv10LayerConfigC2fCIB const &config) -> tensor_guid_t {
         return create_yolov10_c2fcib_module(
@@ -1646,7 +1852,10 @@ tensor_guid_t
             /*num_cib_modules_to_stack=*/
             handle_depth_scaling(config.num_cib_modules_to_stack),
             /*use_shortcut_connection=*/config.use_shortcut_connection,
-            /*use_large_kernel=*/config.use_large_kernel);
+            /*use_large_kernel=*/config.use_large_kernel,
+            /*groups=*/std::nullopt,
+            /*expansion_ratio=*/std::nullopt,
+            /*name=*/name);
       },
       [&](YOLOv10LayerConfigConcat const &config) -> tensor_guid_t {
         return cgb.concat(
@@ -1654,7 +1863,8 @@ tensor_guid_t
                       [&](yolov10_tensor_idx_t idx) -> tensor_guid_t {
                         return resolve_tensor_idx(past_layer_outputs, idx);
                       }),
-            /*axis=*/config.dim);
+            /*axis=*/config.dim,
+            /*name=*/sub_name(name, ""));
       },
       [&](YOLOv10LayerConfigConv const &config) -> tensor_guid_t {
         return create_yolov10_conv_module(
@@ -1665,7 +1875,12 @@ tensor_guid_t
             /*num_output_channels=*/
             handle_output_channel_scaling(config.num_output_channels),
             /*kernel_size=*/config.kernel_size,
-            /*stride=*/config.stride);
+            /*stride=*/config.stride,
+            /*groups=*/std::nullopt,
+            /*use_activation=*/std::nullopt,
+            /*dilation=*/std::nullopt,
+            /*padding=*/std::nullopt,
+            /*name=*/name);
       },
       [&](YOLOv10LayerConfigPSA const &config) -> tensor_guid_t {
         return create_yolov10_psa_module(
@@ -1674,7 +1889,9 @@ tensor_guid_t
             resolve_tensor_idx(past_layer_outputs, config.input_tensor_idx),
             /*num_input_channels=*/std::nullopt,
             /*num_output_channels=*/
-            handle_output_channel_scaling(config.num_output_channels));
+            handle_output_channel_scaling(config.num_output_channels),
+            /*expansion_ratio=*/std::nullopt,
+            /*name=*/name);
       },
       [&](YOLOv10LayerConfigSCDown const &config) -> tensor_guid_t {
         return create_yolov10_scdown_module(
@@ -1685,7 +1902,8 @@ tensor_guid_t
             /*num_output_channels=*/
             handle_output_channel_scaling(config.num_output_channels),
             /*kernel_size=*/config.kernel_size,
-            /*stride=*/config.stride);
+            /*stride=*/config.stride,
+            /*name=*/name);
       },
       [&](YOLOv10LayerConfigSPPF const &config) -> tensor_guid_t {
         return create_yolov10_sppf_module(
@@ -1695,14 +1913,18 @@ tensor_guid_t
             /*num_input_channels=*/std::nullopt,
             /*num_output_channels=*/
             handle_output_channel_scaling(config.num_output_channels),
-            /*kernel_size=*/config.kernel_size);
+            /*kernel_size=*/config.kernel_size,
+            /*num_pooling_iterations=*/std::nullopt,
+            /*use_shortcut_connection=*/std::nullopt,
+            /*name=*/name);
       },
       [&](YOLOv10LayerConfigUpsample const &config) -> tensor_guid_t {
         return cgb.upsample(
             /*input=*/resolve_tensor_idx(past_layer_outputs,
                                          config.input_tensor_idx),
             /*scale_factor=*/config.scale_factor,
-            /*mode=*/config.mode);
+            /*mode=*/config.mode,
+            /*name=*/sub_name(name, ""));
       },
   });
 }
@@ -1725,19 +1947,23 @@ ComputationGraph get_yolov10_computation_graph(YOLOv10Config const &config) {
   };
 
   // Create the initial input tensor
-  tensor_guid_t input = cgb.create_input(input_shape, CreateGrad::NO);
+  tensor_guid_t input = cgb.create_input(input_shape,
+                                         CreateGrad::NO,
+                                         /*name=*/"input");
 
   std::vector<tensor_guid_t> past_layer_outputs = {
       input,
   };
 
+  int layer_idx = 0;
   for (YOLOv10LayerConfig const &layer_config : config.backbone_config) {
     past_layer_outputs.push_back(create_yolov10_layer(
         /*cgb=*/cgb,
         /*layer_config=*/layer_config,
         /*num_classes=*/config.num_classes,
         /*scaling_config=*/config.scaling_config,
-        /*past_layer_outputs=*/past_layer_outputs));
+        /*past_layer_outputs=*/past_layer_outputs,
+        /*name=*/fmt::format("model.{}", layer_idx++)));
   }
 
   YOLOv10DetectHeadOutputs outputs = create_yolov10_v10detect_module(
@@ -1747,7 +1973,9 @@ ComputationGraph get_yolov10_computation_graph(YOLOv10Config const &config) {
                 [&](yolov10_tensor_idx_t idx) -> tensor_guid_t {
                   return resolve_tensor_idx(past_layer_outputs, idx);
                 }),
-      /*num_classes=*/config.head_config.num_classes);
+      /*num_classes=*/config.head_config.num_classes,
+      /*reg_max=*/std::nullopt,
+      /*name=*/fmt::format("model.{}", layer_idx));
 
   return cgb.computation_graph;
 }
