@@ -61,8 +61,9 @@ when the activation is disabled). `reference_model.py` encodes this.
 ```
 
 `ULTRALYTICS` (default `/home/eslaught/flexflow/ultralytics`) selects the
-ultralytics checkout, `NIX` the `nix` binary, and the first positional argument
-the work directory (default `./work`, ~1.2 GB of tensor dumps).
+ultralytics checkout, `NIX` the `nix` binary, `FSIZE` Realm's frame-buffer size,
+and the first positional argument the work directory (default `./work`, ~9 GB of
+tensor dumps).
 
 ## Feeding data into FlexFlow
 
@@ -93,7 +94,7 @@ is documented in `ff_tensor_file.py` and implemented on both sides.
 Listing what is available is often the quickest way to find a name to dump:
 
 ```bash
-REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize 28500 -cuda:dynfb 0' FF_LIST_TENSORS=1 \
+REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize 27000 -cuda:dynfb 0' FF_LIST_TENSORS=1 \
   nixGL -- ./build/release/bin/run-model/run-model yolov10x_mpcg.json
 ```
 
@@ -111,6 +112,8 @@ REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize 28500 -cuda:dynfb 0' FF_LIST_TENSORS=1 \
 | `compare_optimizer.py` | replays FlexFlow's gradients through `torch.optim.SGD`         |
 | `make_label.py`        | writes the label tensor the loss is taken against              |
 | `compare.py`           | end-to-end comparison and the error metrics                    |
+| `check_initialization.py` | checks the weights FlexFlow starts with against PyTorch's rules |
+| `check_training.py`    | smoke test of training from FlexFlow's own initialization       |
 
 ## Backward pass
 
@@ -134,6 +137,12 @@ the class head's only from `model.23.scores`. Between them the two runs cover
 all 513 weight gradients. Each run also checks FlexFlow's gradient of the logit
 itself against the analytic `2 (y - label) / numel(y)`.
 
+Nine batch-norm scale/shift gradients used to be 3-100x worse than the float32
+reference's own error, because `lib/kernels/src/cuda/ops/batch_norm_kernels.cu`
+always selected `CUDNN_BATCHNORM_SPATIAL_PERSISTENT`. Now that the mode is part
+of `BatchNormAttrs` and YOLOv10 asks for `BatchNormMode::SPATIAL`, all of them
+pass.
+
 ## Update pass
 
 `compare_optimizer.py` replays FlexFlow's *own* weight gradients through
@@ -146,6 +155,52 @@ comparing a number to itself.
 
 Five steps are enough to exercise the momentum buffer (step 0 has an empty
 buffer, later steps accumulate) as well as the weight decay term.
+
+## Weight initialization
+
+Unlike everything else here, this stage does *not* hand FlexFlow weights
+exported from PyTorch: it checks the weights FlexFlow fills in for itself from
+the `InitializerAttrs` recorded in the computation graph. The values cannot be
+compared against PyTorch's, since the two use different random number
+generators, so `check_initialization.py` compares the *distribution* against the
+one PyTorch's `reset_parameters` draws from, which is known analytically:
+
+| parameter        | distribution                                            |
+| ---------------- | ------------------------------------------------------- |
+| conv2d kernel    | standard deviation of `kaiming_uniform_(w, a=sqrt(5))`, i.e. `sqrt(2/6)/sqrt(fan_in)` |
+| conv2d bias      | uniform on `[-1/sqrt(fan_in), +1/sqrt(fan_in)]`          |
+| batch norm scale | exactly 1                                                |
+| batch norm shift | exactly 0                                                |
+
+Every tensor's sample mean and standard deviation have to land within six
+standard errors of the analytic ones, and the uniformly-drawn ones additionally
+have to stay inside their bounds, which is an exact check. This is what catches
+a wrong fan calculation: a depthwise convolution's `fan_in` and `fan_out` differ
+by the channel count, so swapping them changes that layer's standard deviation
+by more than an order of magnitude.
+
+The check also runs FlexFlow twice and requires the weights to come out
+bit-identical, and `check_training.py` then trains for a few iterations from
+that initialization (loading only the input and the label) and checks that the
+forward pass stays finite, the output scale neither collapses nor diverges,
+every weight gradient is finite and non-zero, and every weight moves.
+
+`check_training.py` deliberately does *not* require the loss to fall. At
+run-model's learning rate (1e-3, momentum 0.9) against a random label, six steps
+move it by well under a percent in either framework — an identical PyTorch run
+of the upstream model goes 5.156 -> 5.145. A loss criterion here would be
+testing the learning rate, not the initialization.
+
+FlexFlow's conv2d default is `KaimingNormalAttrs`, i.e. the *normal*
+distribution with the standard deviation of the *uniform* one PyTorch uses. The
+two agree on scale and differ only in the shape of the distribution.
+
+Under the Realm backend the filling is done by a task per shard
+(`WEIGHT_INIT_TASK_ID`), launched on the device that owns the shard, so a weight
+is written by the node that holds it and no weight data crosses the network:
+each task generates its own values from the initializer. The check above passes
+identically whether the values are produced that way or by the controller, which
+is what says the task plumbing is faithful.
 
 ## Memory
 
@@ -162,18 +217,29 @@ because the update tasks were never actually being spawned.
 
 ## Known issues
 
-Four bugs had to be fixed before the backward and update passes could be
-validated at all; they are described in the session notes. What remains:
+Several bugs had to be fixed before the backward, update and initialization
+paths could be validated at all; they are described in the session notes. What
+remains:
 
-* **Nine batch-norm scale/shift gradients** are 3-100x worse than the float32
-  reference's own error (they are the only failures the driver reports; cosine
-  similarity is still >= 0.993). The cause is
-  `CUDNN_BATCHNORM_SPATIAL_PERSISTENT`, which
-  `lib/kernels/src/cuda/ops/batch_norm_kernels.cu` selects unconditionally on
-  cuDNN >= 7: building with `mode = CUDNN_BATCHNORM_SPATIAL` instead makes all
-  471/490 gradients pass. Whether the accuracy is worth the speed is a
-  judgement call, so the mode is left as it is.
+* **Only about 5 training iterations fit before CUDA runs out of memory**, and
+  about 18 forward-only ones, at `-ll:fsize 26000`. Lowering `fsize` by 1000 MB
+  buys roughly one more full iteration, so something CUDA-side is being
+  allocated per iteration and never released; the allocation that eventually
+  fails is `cudaStreamCreate` in `lib/kernels/src/kernels/device_stream_t.cc`.
+  This predates weight initialization and is present in the forward pass alone.
 
-* **Weights are never initialized.** Nothing in the execution path applies the
-  `InitializerAttrs` recorded in the computation graph, so without
-  `FF_LOAD_TENSORS` every weight is zero and the model computes zeros.
+* **`Detect.bias_init()` is not applied.** After building the model, ultralytics
+  overwrites the detection head's final biases (`cv2[-1].bias = 1.0`,
+  `cv3[-1].bias = log(5/nc/(640/s)^2)`); FlexFlow leaves them at the conv2d
+  default. `check_initialization.py` reports these six tensors. It moves the box
+  head's output scale noticeably: FlexFlow's `boxes` starts at RMS 0.375 where
+  upstream's starts at 2.04.
+
+* **`InitializerAttrs` carries a fixed seed of 0** in every default op-attrs
+  picks, so the seed alone cannot distinguish one layer from another. The
+  backends therefore salt it with the weight's tensor guid (see
+  `lib/realm-execution/src/realm-execution/weight_initialization.cc`). Without
+  that, all 513 weights of this model collapse onto 35 distinct values -- every
+  convolution of a given kernel shape gets bit-identical weights, including the
+  three parallel detection-head branches. A seed that is genuinely part of the
+  model would be a better fix than a salt applied at execution time.
