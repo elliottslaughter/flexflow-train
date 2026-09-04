@@ -281,6 +281,97 @@ static Realm::IndexSpace<N, T> ispace_from_dims(TensorDims const &dims) {
   }
 }
 
+[[nodiscard]] static Realm::Event
+    issue_fill_for_field(TensorDims const &dims,
+                         Realm::CopySrcDstField const &dst_field,
+                         void const *fill_value,
+                         size_t fill_value_size,
+                         Realm::ProfilingRequestSet const &requests,
+                         Realm::Event wait_on,
+                         int priority) {
+  switch (dims.ff_ordered.num_dims()) {
+#if REALM_MAX_DIM >= 1
+    case 1:
+      return ispace_from_dims<1>(dims).fill(
+          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+#endif
+#if REALM_MAX_DIM >= 2
+    case 2:
+      return ispace_from_dims<2>(dims).fill(
+          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+#endif
+#if REALM_MAX_DIM >= 3
+    case 3:
+      return ispace_from_dims<3>(dims).fill(
+          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+#endif
+#if REALM_MAX_DIM >= 4
+    case 4:
+      return ispace_from_dims<4>(dims).fill(
+          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+#endif
+#if REALM_MAX_DIM >= 5
+    case 5:
+      return ispace_from_dims<5>(dims).fill(
+          {dst_field}, requests, fill_value, fill_value_size, wait_on, priority);
+#endif
+    default:
+      PANIC("TensorShape dims greater than REALM_MAX_DIM: {}",
+            dims.ff_ordered.num_dims());
+      break;
+  }
+}
+
+Realm::Event RealmContext::issue_fill(ParallelTensorShape const &shape,
+                                      Realm::RegionInstance inst,
+                                      void const *fill_value,
+                                      size_t fill_value_size,
+                                      Realm::ProfilingRequestSet const &requests,
+                                      Realm::Event wait_on,
+                                      int priority) {
+  TensorShape piece_shape = get_piece_shape(shape);
+
+  size_t element_size = static_cast<size_t>(
+      size_of_datatype(piece_shape.data_type).int_from_positive_int());
+  ASSERT(fill_value_size == element_size,
+         "fill value size must match the size of a single element",
+         fill_value_size,
+         element_size);
+
+  Realm::CopySrcDstField dst_field;
+  dst_field.set_field(/*inst=*/inst,
+                      /*field_id=*/0,
+                      /*size=*/element_size,
+                      /*subfield_offset=*/0);
+
+  Realm::Event result = issue_fill_for_field(piece_shape.dims,
+                                             dst_field,
+                                             fill_value,
+                                             fill_value_size,
+                                             requests,
+                                             wait_on,
+                                             priority);
+  this->outstanding_events.push_back(result);
+  return result;
+}
+
+Realm::Event
+    RealmContext::issue_zero_fill(ParallelTensorShape const &shape,
+                                  Realm::RegionInstance inst,
+                                  Realm::ProfilingRequestSet const &requests,
+                                  Realm::Event wait_on,
+                                  int priority) {
+  // All of the data types FlexFlow supports represent zero as all-zero bytes,
+  // so a zero fill does not need to know which one it is dealing with.
+  std::vector<char> zero(
+      static_cast<size_t>(size_of_datatype(get_piece_shape(shape).data_type)
+                              .int_from_positive_int()),
+      0);
+
+  return this->issue_fill(
+      shape, inst, zero.data(), zero.size(), requests, wait_on, priority);
+}
+
 Realm::Event
     RealmContext::issue_copy(ParallelTensorShape const &src_shape,
                              Realm::RegionInstance src_inst,
