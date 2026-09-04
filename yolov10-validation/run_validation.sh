@@ -38,6 +38,11 @@ PYTHONPATH="$ULTRALYTICS:$HERE" "$PYTHON" "$HERE/export_reference.py" \
   --inputs "$WORKDIR/ff_inputs.bin" \
   --reference "$WORKDIR/reference.bin"
 
+for logit in boxes scores; do
+  PYTHONPATH="$HERE" "$PYTHON" "$HERE/make_label.py" \
+    --out "$WORKDIR/label_$logit.bin" --logit "model.23.$logit"
+done
+
 # The output of every backbone layer, plus the two detection head outputs.  See
 # reference_model.get_backbone_layer_outputs() for where these names come from.
 NAMES=$(PYTHONPATH="$ULTRALYTICS:$HERE" "$PYTHON" - <<'PY'
@@ -72,3 +77,50 @@ PYTHONPATH="$HERE" "$PYTHON" "$HERE/compare.py" \
   --reference "$WORKDIR/reference.bin" \
   --actual "$WORKDIR/ff_tensors.bin" \
   --rms-rel-tolerance 0.05
+
+# ---------------------------------------------------------------------------
+# Backward pass
+#
+# The loss can only be attached to one tensor at a time, so the head is covered
+# in two runs: the box head's weights only receive a gradient when the loss is
+# taken against `boxes`, and the class head's only when it is taken against
+# `scores`.
+# ---------------------------------------------------------------------------
+
+BWD_NAMES=$(PYTHONPATH="$ULTRALYTICS:$HERE" "$PYTHON" - "$WORKDIR/yolov10x_cg.json" <<'PY'
+import sys
+import reference_model
+from export_reference import get_flexflow_weight_names
+
+model = reference_model.build_model()
+present = set(get_flexflow_weight_names(sys.argv[1]))
+spine = list(reference_model.get_backbone_layer_outputs(model).values())
+names = list(spine) + ["grad:" + s for s in spine]
+names += ["model.23.boxes", "model.23.scores",
+          "grad:model.23.boxes", "grad:model.23.scores"]
+names += ["grad:" + w
+          for w in reference_model.get_flexflow_weight_names(model).values()
+          if w in present]
+print(",".join(names))
+PY
+)
+
+for logit in boxes scores; do
+  echo
+  echo "=== running FlexFlow's backward pass (loss against model.23.$logit) ==="
+  ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize 28500 -cuda:dynfb 0' \
+    FF_LOAD_TENSORS='$WORKDIR/ff_inputs.bin,$WORKDIR/label_$logit.bin' \
+    FF_DUMP_TENSORS='$WORKDIR/ff_bwd_$logit.bin' \
+    FF_DUMP_NAMES='$BWD_NAMES' \
+    FF_LOSS=mean_squared_error_avg FF_LOSS_LOGIT='model.23.$logit' \
+    FF_ITERATIONS=1 \
+    nixGL -- ./build/release/bin/run-model/run-model '$WORKDIR/yolov10x_mpcg.json'"
+
+  echo
+  echo "=== per-layer backward comparison (loss against model.23.$logit) ==="
+  PYTHONPATH="$ULTRALYTICS:$HERE" "$PYTHON" "$HERE/compare_layerwise_backward.py" \
+    --ff-tensors "$WORKDIR/ff_bwd_$logit.bin" \
+    --inputs "$WORKDIR/ff_inputs.bin" \
+    --label "$WORKDIR/label_$logit.bin" \
+    --logit "model.23.$logit" || true
+done
