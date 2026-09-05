@@ -2,6 +2,7 @@
 #include "kernels/compare_tensor_accessors.h"
 #include "kernels/copy_tensor_accessor.h"
 #include "kernels/device_handle_t.h"
+#include "kernels/device_stream_t.h"
 #include "kernels/format_accessor_contents.h"
 #include "kernels/local_cpu_allocator.h"
 #include "kernels/local_cuda_allocator.h"
@@ -163,7 +164,8 @@ TEST_SUITE(FF_TEST_SUITE) {
             /*allocator=*/allocator,
             /*profiling_settings=*/ProfilingSettings{0, 1},
             /*device_handle=*/ff_handle,
-            /*global_device_id=*/global_device_id);
+            /*global_device_id=*/global_device_id,
+            /*stream=*/get_cpu_device_stream());
 
     // begin training loop
     int num_epochs = 5;
@@ -337,7 +339,8 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
             /*allocator=*/allocator,
             /*profiling_settings=*/ProfilingSettings{0, 1},
             /*device_handle=*/ff_handle,
-            /*device_idx=*/device_idx);
+            /*device_idx=*/device_idx,
+            /*stream=*/get_gpu_device_stream(managed_stream.raw_stream()));
 
     // begin training loop
     Allocator cpu_allocator = create_local_cpu_memory_allocator();
@@ -461,7 +464,8 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
               /*allocator=*/allocator,
               /*profiling_settings=*/ProfilingSettings{0, 1},
               /*device_handle=*/ff_handle,
-              /*device_idx=*/device_idx);
+              /*device_idx=*/device_idx,
+              /*stream=*/get_gpu_device_stream(managed_stream.raw_stream()));
 
       perform_all_passes_for_computation_graph_instance(
           /*instance=*/computation_graph_instance,

@@ -2,6 +2,7 @@
 #define _FLEXFLOW_LIB_KERNELS_INCLUDE_KERNELS_ACCESSOR_H
 
 #include "kernels/device.h"
+#include "kernels/device_stream_t.dtg.h"
 #include "kernels/ff_handle.h"
 #include "kernels/legion_dim.h"
 #include "kernels/legion_ordered/legion_ordered.h"
@@ -223,8 +224,28 @@ GenericTensorAccessorR read_only_accessor_from_write_accessor(
 TensorShape get_tensor_shape_for_accessor_r(GenericTensorAccessorR const &);
 TensorShape get_tensor_shape_for_accessor_w(GenericTensorAccessorW const &);
 
+/**
+ * \brief Copy \p src_accessor into \p dst_accessor, blocking until the copy
+ * has actually happened.
+ *
+ * Uses the default stream, so it is for use outside of a task. Inside a task,
+ * use \ref copy_accessor_data_to_l_from_r_on_stream: Realm's task streams are
+ * created non-blocking, so work left on the default stream is not ordered
+ * against the rest of a task's work.
+ */
 void copy_accessor_data_to_l_from_r(GenericTensorAccessorW const &dst_accessor,
                                     GenericTensorAccessorR const &src_accessor);
+
+/**
+ * \brief Copy \p src_accessor into \p dst_accessor on \p stream, blocking
+ * until the copy has actually happened.
+ *
+ * \relates copy_accessor_data_to_l_from_r
+ */
+void copy_accessor_data_to_l_from_r_on_stream(
+    GenericTensorAccessorW const &dst_accessor,
+    GenericTensorAccessorR const &src_accessor,
+    device_stream_t const &stream);
 
 template <DataType DT>
 real_type_t<DT> accessor_get_only_value(GenericTensorAccessorR const &acc) {

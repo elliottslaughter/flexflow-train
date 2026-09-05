@@ -14,12 +14,12 @@ static std::optional<milliseconds_t>
 
   ProfilingSettings profiling = acc.get_profiling_settings();
   EmbeddingAttrs attrs = acc.get_op_attrs().require_embedding();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
 
   return profile(
       forward_kernel,
       profiling,
-      kernel_device_type,
+      stream,
       "[Embedding] forward_time = {:.2lf}ms\n",
       input,
       output,
@@ -41,12 +41,12 @@ static std::optional<milliseconds_t>
 
   ProfilingSettings profiling = acc.get_profiling_settings();
   EmbeddingAttrs attrs = acc.get_op_attrs().require_embedding();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
 
   return profile(
       backward_kernel,
       profiling,
-      kernel_device_type,
+      stream,
       "[Embedding] backward_time = {:.2lf}ms\n",
       output,
       input,

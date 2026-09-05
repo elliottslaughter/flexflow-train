@@ -30,7 +30,7 @@ static DeviceSpecificPerDeviceOpState
 
   std::optional<BatchNormPerDeviceState> per_device_state =
       batch_norm_init_kernel(
-          kernel_device_type, allocator, attrs, input_shape, output_shape);
+          acc.get_device_stream(), allocator, attrs, input_shape, output_shape);
 
   return DeviceSpecificPerDeviceOpState{
       acc.make_device_specific(per_device_state),
@@ -40,7 +40,7 @@ static DeviceSpecificPerDeviceOpState
 static std::optional<milliseconds_t>
     forward_task_impl(TaskArgumentAccessor const &acc) {
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   device_handle_t handle = acc.get_ff_handle();
   std::optional<BatchNormPerDeviceState> per_device_state =
       acc.get_per_device_op_state().require_batch_norm();
@@ -57,7 +57,7 @@ static std::optional<milliseconds_t>
 
   return profile(batch_norm_forward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[BatchNorm] forward_time = {:.2lf}ms\n",
                  handle,
                  per_device_state,
@@ -71,7 +71,7 @@ static std::optional<milliseconds_t>
 static std::optional<milliseconds_t>
     backward_task_impl(TaskArgumentAccessor const &acc) {
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   device_handle_t handle = acc.get_ff_handle();
   std::optional<BatchNormPerDeviceState> per_device_state =
       acc.get_per_device_op_state().require_batch_norm();
@@ -94,7 +94,7 @@ static std::optional<milliseconds_t>
 
   return profile(batch_norm_backward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[BatchNorm] backward_time = {:.2lf}ms\n",
                  handle,
                  per_device_state,

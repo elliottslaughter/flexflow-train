@@ -6,19 +6,20 @@
 namespace FlexFlow {
 
 std::optional<BatchNormPerDeviceState>
-    batch_norm_init_kernel(DeviceType device_type,
+    batch_norm_init_kernel(device_stream_t const &stream,
                            Allocator &allocator,
                            BatchNormAttrs const &attrs,
                            TensorShape const &input_shape,
                            TensorShape const &output_shape) {
-  if (device_type == DeviceType::GPU) {
+  if (stream.is_gpu()) {
     return batch_norm_gpu_init_kernel(
+        /*stream=*/stream.require_gpu(),
         /*allocator=*/allocator,
         /*attrs=*/attrs,
         /*input_shape=*/input_shape,
         /*output_shape=*/output_shape);
   } else {
-    ASSERT(device_type == DeviceType::CPU);
+    ASSERT(stream.is_cpu());
     return std::nullopt;
   }
 }

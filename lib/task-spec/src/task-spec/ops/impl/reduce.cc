@@ -40,14 +40,14 @@ static std::optional<milliseconds_t>
   ReducePerDeviceState per_device_state =
       acc.get_per_device_op_state().require_reduce().value();
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
 
   auto input = acc.get_tensor<Permissions::RO>(TensorSlotName::INPUT);
   auto output = acc.get_tensor<Permissions::WO>(TensorSlotName::OUTPUT);
 
   return profile(forward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[Reduce] forward_time = {:.2lf}ms\n",
                  per_device_state,
                  input.get_float_ptr(),
@@ -59,7 +59,7 @@ static std::optional<milliseconds_t>
   ReducePerDeviceState per_device_state =
       acc.get_per_device_op_state().require_reduce().value();
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
 
   auto input_grad = acc.get_tensor_grad<Permissions::WO>(TensorSlotName::INPUT);
   auto output_grad =
@@ -67,7 +67,7 @@ static std::optional<milliseconds_t>
 
   return profile(backward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[Reduce] backward_time = {:.2lf}ms\n",
                  per_device_state,
                  output_grad.get_float_ptr(),

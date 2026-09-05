@@ -8,7 +8,7 @@ static std::optional<milliseconds_t>
     forward_task_impl(TaskArgumentAccessor const &acc) {
 
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   device_handle_t handle = acc.get_ff_handle();
   auto lhs_input = acc.get_tensor<Permissions::RO>(TensorSlotName::LHS_INPUT);
   auto rhs_input = acc.get_tensor<Permissions::RO>(TensorSlotName::RHS_INPUT);
@@ -16,7 +16,7 @@ static std::optional<milliseconds_t>
 
   return profile(batch_matmul_forward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[BatchMatmul] forward_time = {:.2lf}ms\n",
                  handle,
                  lhs_input,
@@ -27,7 +27,7 @@ static std::optional<milliseconds_t>
 static std::optional<milliseconds_t>
     backward_task_impl(TaskArgumentAccessor const &acc) {
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   device_handle_t handle = acc.get_ff_handle();
 
   auto lhs_input = acc.get_tensor<Permissions::RO>(TensorSlotName::LHS_INPUT);
@@ -44,7 +44,7 @@ static std::optional<milliseconds_t>
 
   return profile(batch_matmul_backward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[BatchMatmul] backward_time = {:.2lf}ms\n",
                  handle,
                  output,

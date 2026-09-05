@@ -2,6 +2,7 @@
 #define _FLEXFLOW_LIB_TASK_SPEC_INCLUDE_TASK_SPEC_TASK_ARGUMENT_ACCESSOR_TASK_ARGUMENT_ACCESSOR_H
 
 #include "kernels/device_handle_t.dtg.h"
+#include "kernels/device_stream_t.dtg.h"
 #include "kernels/profiling_settings.dtg.h"
 #include "op-attrs/ops/loss_functions/loss_attrs.dtg.h"
 #include "op-attrs/pcg_operator_attrs.dtg.h"
@@ -19,6 +20,7 @@ struct TaskArgumentAccessor {
   ProfilingSettings get_profiling_settings() const;
   device_handle_t get_ff_handle() const;
   DeviceType get_kernel_device_type() const;
+  device_stream_t get_device_stream() const;
   PCGOperatorAttrs get_op_attrs() const;
   LossAttrs get_loss_attrs() const;
   PerDeviceOpState get_per_device_op_state() const;

@@ -6,6 +6,7 @@
 #include "kernels/device_handle_t.h"
 #include "kernels/device_stream_t.h"
 #include "kernels/format_accessor_contents.h"
+#include "kernels/managed_ff_stream.h"
 #include "kernels/managed_per_device_ff_handle.h"
 #include "test/utils/doctest/check_kv.h"
 #include <doctest/doctest.h>
@@ -89,8 +90,17 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
           /*regularizer=*/std::nullopt,
       };
 
+      // A test is the thing running the kernel here, so it owns the stream.
+      std::optional<ManagedFFStream> owned_stream =
+          device_type == DeviceType::GPU ? std::make_optional<ManagedFFStream>()
+                                         : std::nullopt;
+      device_stream_t stream =
+          device_type == DeviceType::GPU
+              ? get_gpu_device_stream(owned_stream.value().raw_stream())
+              : get_cpu_device_stream();
+
       std::optional<LinearPerDeviceState> per_device_state = linear_init_kernel(
-          /*device_type=*/device_type,
+          /*stream=*/stream,
           /*handle=*/device_handle_t_from_managed_ff_handle(managed_handle),
           /*activation=*/attrs.activation,
           /*regularizer=*/attrs.regularizer,
@@ -100,8 +110,6 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
           /*output_type=*/DataType::FLOAT,
           /*batch_size=*/batch_size,
           /*output_num_channels=*/attrs.out_channels.int_from_positive_int());
-
-      device_stream_t stream = get_stream_for_device_type(device_type);
 
       linear_forward_kernel(
           /*stream=*/stream,
@@ -201,8 +209,17 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
               /*workSpaceSize=*/1024 * 1024,
               /*allowTensorOpMathConversion=*/true);
 
+      // A test is the thing running the kernel here, so it owns the stream.
+      std::optional<ManagedFFStream> owned_stream =
+          device_type == DeviceType::GPU ? std::make_optional<ManagedFFStream>()
+                                         : std::nullopt;
+      device_stream_t stream =
+          device_type == DeviceType::GPU
+              ? get_gpu_device_stream(owned_stream.value().raw_stream())
+              : get_cpu_device_stream();
+
       std::optional<LinearPerDeviceState> per_device_state = linear_init_kernel(
-          /*device_type=*/device_type,
+          /*stream=*/stream,
           /*handle=*/device_handle_t_from_managed_ff_handle(managed_handle),
           /*activation=*/attrs.activation,
           /*regularizer=*/attrs.regularizer,
@@ -212,8 +229,6 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
           /*output_type=*/DataType::FLOAT,
           /*batch_size=*/batch_size,
           /*output_num_channels=*/attrs.out_channels.int_from_positive_int());
-
-      device_stream_t stream = get_stream_for_device_type(device_type);
 
       linear_backward_kernel(
           /*stream=*/stream,

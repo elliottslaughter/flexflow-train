@@ -34,14 +34,14 @@ static std::optional<milliseconds_t>
   DropoutPerDeviceState per_device_state =
       acc.get_per_device_op_state().require_dropout().value();
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
 
   auto input = acc.get_tensor<Permissions::RO>(TensorSlotName::INPUT);
   auto output = acc.get_tensor<Permissions::WO>(TensorSlotName::OUTPUT);
 
   return profile(forward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[Dropout] forward_time = {:.2lf}ms\n",
                  per_device_state,
                  input.get_float_ptr(),
@@ -54,7 +54,7 @@ static std::optional<milliseconds_t>
   DropoutPerDeviceState per_device_state =
       acc.get_per_device_op_state().require_dropout().value();
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
 
   auto input_grad = acc.get_tensor_grad<Permissions::RW>(TensorSlotName::INPUT);
   auto output_grad =
@@ -62,7 +62,7 @@ static std::optional<milliseconds_t>
 
   return profile(backward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[Dropout] backward_time = {:.2lf}ms\n",
                  per_device_state,
                  output_grad.get_float_ptr(),

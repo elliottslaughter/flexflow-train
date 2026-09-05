@@ -13,7 +13,7 @@ static void sgd_update_task_impl(TaskArgumentAccessor const &acc) {
       acc.get_tensor_grad<Permissions::RO>(TensorSlotName::OUTPUT);
   auto weight = acc.get_tensor<Permissions::RW>(TensorSlotName::OUTPUT);
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
 
   ASSERT(weight.shape == weight_grad.shape);
 
@@ -34,7 +34,7 @@ static void sgd_update_task_impl(TaskArgumentAccessor const &acc) {
   device_handle_t handle = acc.get_ff_handle();
   profile(sgd_update_task,
           profiling,
-          kernel_device_type,
+          stream,
           "[SGD] update_time = %.2lfms\n",
           handle,
           attrs.lr,
@@ -62,7 +62,7 @@ static void adam_update_task_impl(TaskArgumentAccessor const &acc) {
       TensorSlotName::WEIGHT, OptimizerSlotName::ADAM_M);
 
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
 
   ASSERT(weight.shape == weight_grad.shape);
   int size = get_num_elements(weight_grad.shape.dims).int_from_positive_int();
@@ -77,7 +77,7 @@ static void adam_update_task_impl(TaskArgumentAccessor const &acc) {
   device_handle_t handle = acc.get_ff_handle();
   profile(adam_update_task,
           profiling,
-          kernel_device_type,
+          stream,
           "[Adam NCCL] update_time = %.2lfms\n",
           handle,
           attrs.alpha_t,

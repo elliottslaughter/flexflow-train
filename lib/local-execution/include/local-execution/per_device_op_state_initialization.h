@@ -3,6 +3,7 @@
 
 #include "kernels/allocation.h"
 #include "kernels/device_handle_t.dtg.h"
+#include "kernels/device_stream_t.dtg.h"
 #include "kernels/profiling_settings.dtg.h"
 #include "pcg/optimizer_attrs.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_open_dataflow_graph.dtg.h"
@@ -18,13 +19,15 @@ DynamicNodeInvocation
                     ProfilingSettings const &profiling_settings,
                     device_handle_t const &device_handle,
                     OptimizerAttrs const &optimizer_attrs,
-                    global_device_id_t device_idx);
+                    global_device_id_t device_idx,
+                    device_stream_t const &stream);
 
 /**
  * @brief Initialize all operators and save the per-device op state
  */
 DynamicOpenDataflowGraph perform_per_device_op_state_initialization(
     DynamicOpenDataflowGraph const &,
+    device_stream_t const &stream,
     Allocator &allocator,
     ProfilingSettings const &profiling_settings,
     device_handle_t const &device_handle,

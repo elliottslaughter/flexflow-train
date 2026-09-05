@@ -41,7 +41,8 @@ static bool use_activation(std::optional<Activation> activation) {
 }
 
 LinearPerDeviceState
-    gpu_init_kernel(PerDeviceFFHandle handle,
+    gpu_init_kernel(ffStream_t stream,
+                    PerDeviceFFHandle handle,
                     std::optional<Activation> activation,
                     std::optional<RegularizerAttrs> regularizer,
                     bool use_bias,
@@ -98,10 +99,14 @@ LinearPerDeviceState
   for (int i = 0; i < batch_size; i++) {
     one_ptr_cpu[i] = 1.0;
   }
-  checkCUDA(cudaMemcpy(one_ptr,
-                       one_ptr_cpu,
-                       sizeof(float) * batch_size,
-                       cudaMemcpyHostToDevice));
+  // See the note in batch_norm_gpu_init_kernel: the default stream is not
+  // ordered against Realm's task streams.
+  checkCUDA(cudaMemcpyAsync(one_ptr,
+                            one_ptr_cpu,
+                            sizeof(float) * batch_size,
+                            cudaMemcpyHostToDevice,
+                            stream));
+  checkCUDA(cudaStreamSynchronize(stream));
   LinearPerDeviceState per_device_state = LinearPerDeviceState{
       /*handle=*/handle,
       /*outputTensor=*/outputTensor,

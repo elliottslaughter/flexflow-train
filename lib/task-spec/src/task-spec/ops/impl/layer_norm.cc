@@ -37,13 +37,13 @@ static std::optional<milliseconds_t>
   auto beta = acc.get_tensor<Permissions::RW>(TensorSlotName::BETA);
 
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   LayerNormPerDeviceState state =
       acc.get_per_device_op_state().require_layer_norm().value();
 
   return profile(forward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[LayerNorm] forward time = {:.2lf}ms\n",
                  state,
                  input,
@@ -64,13 +64,13 @@ static std::optional<milliseconds_t>
       acc.get_tensor_grad<Permissions::RO>(TensorSlotName::OUTPUT);
 
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   LayerNormPerDeviceState state =
       acc.get_per_device_op_state().require_layer_norm().value();
 
   return profile(backward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[LayerNorm] backward time = {:.2lf}ms\n",
                  state,
                  output_grad,

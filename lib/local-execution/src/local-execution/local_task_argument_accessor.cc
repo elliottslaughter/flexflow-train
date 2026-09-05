@@ -16,12 +16,14 @@ LocalTaskArgumentAccessor::LocalTaskArgumentAccessor(
     std::optional<LossAttrs> const &loss_attrs,
     std::optional<PerDeviceOpState> const &per_device_op_state,
     std::optional<OptimizerAttrs> const &optimizer_attrs,
-    global_device_id_t device_idx)
+    global_device_id_t device_idx,
+    device_stream_t const &stream)
     : allocator(allocator), tensor_slots_backing(tensor_slots_backing),
       profiling_settings(profiling_settings), ff_handle(ff_handle),
       op_attrs(op_attrs), loss_attrs(loss_attrs),
       per_device_op_state(per_device_op_state),
-      optimizer_attrs(optimizer_attrs), device_idx(device_idx) {}
+      optimizer_attrs(optimizer_attrs), device_idx(device_idx), stream(stream) {
+}
 
 TensorShape
     LocalTaskArgumentAccessor::get_tensor_shape(TensorSlotName slot) const {
@@ -83,6 +85,10 @@ device_handle_t LocalTaskArgumentAccessor::get_ff_handle() const {
 
 DeviceType LocalTaskArgumentAccessor::get_kernel_device_type() const {
   return this->device_idx.device_type;
+}
+
+device_stream_t LocalTaskArgumentAccessor::get_device_stream() const {
+  return this->stream;
 }
 
 PCGOperatorAttrs LocalTaskArgumentAccessor::get_op_attrs() const {

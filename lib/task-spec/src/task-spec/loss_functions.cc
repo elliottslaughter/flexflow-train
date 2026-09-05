@@ -24,7 +24,7 @@ namespace FlexFlow {
 static void backward_task_impl(TaskArgumentAccessor const &acc) {
   LossAttrs attrs = acc.get_loss_attrs();
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
 
   auto logit_grad = acc.get_tensor_grad<Permissions::RW>(TensorSlotName::LOGIT);
   auto logit = acc.get_tensor<Permissions::RO>(TensorSlotName::LOGIT);
@@ -75,7 +75,7 @@ static void backward_task_impl(TaskArgumentAccessor const &acc) {
 
     profile(sparse_categorical_crossentropy_loss_backward_kernel,
             profiling,
-            kernel_device_type,
+            stream,
             "[SparseCategoricalCrossEntropyLoss] backward_time = %.2lfms\n",
             get_float_ptr(logit_grad),
             get_float_ptr(logit),
@@ -95,7 +95,7 @@ static void backward_task_impl(TaskArgumentAccessor const &acc) {
       case LossFunction::CATEGORICAL_CROSSENTROPY: {
         profile(categorical_crossentropy_loss_backward_kernel,
                 profiling,
-                kernel_device_type,
+                stream,
                 "[CategoricalCrossEntropyLoss] backward_time = %.2lfms\n",
                 logit_grad,
                 logit,
@@ -106,7 +106,7 @@ static void backward_task_impl(TaskArgumentAccessor const &acc) {
       case LossFunction::MEAN_SQUARED_ERROR_AVG_REDUCE: {
         profile(mean_squared_error_avg_loss_backward_kernel,
                 profiling,
-                kernel_device_type,
+                stream,
                 "[MeanSquaredErrorAvgLoss] backward_time = %.2lfms\n",
                 get_float_ptr(logit_grad),
                 get_float_ptr(logit),
@@ -119,7 +119,7 @@ static void backward_task_impl(TaskArgumentAccessor const &acc) {
       case LossFunction::IDENTITY: {
         profile(identity_loss_backward_kernel,
                 profiling,
-                kernel_device_type,
+                stream,
                 "[IdentityLoss] backward_time = %.2lfms\n",
                 get_float_ptr(logit_grad),
                 get_float_ptr(logit),

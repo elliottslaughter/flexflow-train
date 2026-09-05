@@ -10,7 +10,7 @@
 namespace FlexFlow::Kernels::MultiHeadAttention {
 
 std::optional<MHAPerDeviceState>
-    init_kernel(DeviceType device_type,
+    init_kernel(device_stream_t const &stream,
                 device_handle_t const &per_device_ff_handle,
                 Allocator &allocator,
                 int num_samples,

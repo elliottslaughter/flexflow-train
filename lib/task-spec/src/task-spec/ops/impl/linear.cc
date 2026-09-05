@@ -22,7 +22,7 @@ static DeviceSpecificPerDeviceOpState
   positive_int batch_size = dim_at_idx(output.shape.dims, ff_dim_t{1_n});
 
   std::optional<LinearPerDeviceState> per_device_state =
-      linear_init_kernel(kernel_device_type,
+      linear_init_kernel(acc.get_device_stream(),
                          handle,
                          attrs.activation,
                          attrs.regularizer,
@@ -45,7 +45,7 @@ static std::optional<milliseconds_t>
   auto output = acc.get_tensor<Permissions::WO>(TensorSlotName::OUTPUT);
 
   LinearAttrs attrs = acc.get_op_attrs().require_linear();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   ProfilingSettings profiling = acc.get_profiling_settings();
   std::optional<LinearPerDeviceState> per_device_state =
       acc.get_per_device_op_state().require_linear();
@@ -57,7 +57,7 @@ static std::optional<milliseconds_t>
 
   auto result = profile(linear_forward_kernel,
                         profiling,
-                        kernel_device_type,
+                        stream,
                         "[Linear] forward_time = {:.2lf}ms\n",
                         per_device_state,
                         attrs,
@@ -82,7 +82,7 @@ static std::optional<milliseconds_t>
       acc.get_tensor_grad<Permissions::RW>(TensorSlotName::OUTPUT);
 
   LinearAttrs attrs = acc.get_op_attrs().require_linear();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   ProfilingSettings profiling = acc.get_profiling_settings();
   std::optional<LinearPerDeviceState> per_device_state =
       acc.get_per_device_op_state().require_linear();
@@ -94,7 +94,7 @@ static std::optional<milliseconds_t>
 
   auto result = profile(linear_backward_kernel,
                         profiling,
-                        kernel_device_type,
+                        stream,
                         "[Linear] backward_time = {:.2lf}ms\n",
                         per_device_state,
                         attrs,

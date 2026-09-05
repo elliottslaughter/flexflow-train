@@ -21,7 +21,8 @@ struct LocalTaskArgumentAccessor : public ITaskArgumentAccessor {
       std::optional<LossAttrs> const &loss_attrs,
       std::optional<PerDeviceOpState> const &per_device_op_state,
       std::optional<OptimizerAttrs> const &optimizer_attrs,
-      global_device_id_t device_idx);
+      global_device_id_t device_idx,
+      device_stream_t const &stream);
 
   LocalTaskArgumentAccessor(LocalTaskArgumentAccessor const &) = delete;
   LocalTaskArgumentAccessor(LocalTaskArgumentAccessor &&) = delete;
@@ -34,6 +35,7 @@ struct LocalTaskArgumentAccessor : public ITaskArgumentAccessor {
   ProfilingSettings get_profiling_settings() const override;
   device_handle_t get_ff_handle() const override;
   DeviceType get_kernel_device_type() const override;
+  device_stream_t get_device_stream() const override;
   PCGOperatorAttrs get_op_attrs() const override;
   LossAttrs get_loss_attrs() const override;
   PerDeviceOpState get_per_device_op_state() const override;
@@ -56,6 +58,7 @@ private:
   std::optional<OptimizerAttrs> optimizer_attrs;
 
   global_device_id_t device_idx;
+  device_stream_t stream;
 };
 
 CHECK_RC_COPY_VIRTUAL_COMPLIANT(LocalTaskArgumentAccessor);

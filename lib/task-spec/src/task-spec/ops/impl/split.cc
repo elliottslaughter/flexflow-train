@@ -39,7 +39,7 @@ static std::vector<GenericTensorAccessorR>
 static std::optional<milliseconds_t>
     forward_task_impl(TaskArgumentAccessor const &acc) {
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   SplitAttrs attrs = acc.get_op_attrs().require_split();
 
   GenericTensorAccessorR input =
@@ -53,7 +53,7 @@ static std::optional<milliseconds_t>
 
   return profile(split_forward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[Split] forward_time = {:.2lf}ms\n",
                  attrs,
                  input,
@@ -63,7 +63,7 @@ static std::optional<milliseconds_t>
 static std::optional<milliseconds_t>
     backward_task_impl(TaskArgumentAccessor const &acc) {
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   SplitAttrs attrs = acc.get_op_attrs().require_split();
 
   std::vector<GenericTensorAccessorR> outputs = get_outputs(acc, attrs);
@@ -81,7 +81,7 @@ static std::optional<milliseconds_t>
 
   return profile(split_backward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[Split] backward_time = {:.2lf}ms\n",
                  attrs,
                  outputs,

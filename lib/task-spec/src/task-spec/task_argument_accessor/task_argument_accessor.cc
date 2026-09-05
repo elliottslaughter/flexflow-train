@@ -13,6 +13,10 @@ DeviceType TaskArgumentAccessor::get_kernel_device_type() const {
   return this->ptr->get_kernel_device_type();
 }
 
+device_stream_t TaskArgumentAccessor::get_device_stream() const {
+  return this->ptr->get_device_stream();
+}
+
 PCGOperatorAttrs TaskArgumentAccessor::get_op_attrs() const {
   return this->ptr->get_op_attrs();
 }

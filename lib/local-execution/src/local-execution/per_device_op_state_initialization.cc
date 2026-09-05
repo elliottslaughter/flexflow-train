@@ -24,7 +24,8 @@ DynamicNodeInvocation
                     ProfilingSettings const &profiling_settings,
                     device_handle_t const &device_handle,
                     OptimizerAttrs const &optimizer_attrs,
-                    global_device_id_t device_idx) {
+                    global_device_id_t device_idx,
+                    device_stream_t const &stream) {
   if (!i.node_attrs.op_attrs.has_value() ||
       !i.node_attrs.op_attrs.value().is_pcg_op()) {
     return i;
@@ -44,7 +45,8 @@ DynamicNodeInvocation
           /*ff_handle=*/device_handle,
           /*per_device_op_state=*/std::nullopt,
           /*optimizer_attrs=*/optimizer_attrs,
-          /*device_idx=*/device_idx);
+          /*device_idx=*/device_idx,
+          /*stream=*/stream);
 
   // Run task init
   std::optional<DeviceSpecificPerDeviceOpState> per_device_op_state =
@@ -57,6 +59,7 @@ DynamicNodeInvocation
 
 DynamicOpenDataflowGraph perform_per_device_op_state_initialization(
     DynamicOpenDataflowGraph const &dg,
+    device_stream_t const &stream,
     Allocator &allocator,
     ProfilingSettings const &profiling_settings,
     device_handle_t const &device_handle,
@@ -71,7 +74,8 @@ DynamicOpenDataflowGraph perform_per_device_op_state_initialization(
                                profiling_settings,
                                device_handle,
                                optimizer_attrs,
-                               device_idx);
+                               device_idx,
+                               stream);
       });
 
   return result;

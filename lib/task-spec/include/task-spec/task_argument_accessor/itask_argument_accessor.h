@@ -3,6 +3,7 @@
 
 #include "kernels/allocation.h"
 #include "kernels/device_handle_t.dtg.h"
+#include "kernels/device_stream_t.dtg.h"
 #include "kernels/profiling_settings.dtg.h"
 #include "op-attrs/ops/loss_functions/loss_attrs.dtg.h"
 #include "op-attrs/pcg_operator_attrs.dtg.h"
@@ -31,6 +32,16 @@ struct ITaskArgumentAccessor {
   virtual ProfilingSettings get_profiling_settings() const = 0;
   virtual device_handle_t get_ff_handle() const = 0;
   virtual DeviceType get_kernel_device_type() const = 0;
+
+  /**
+   * \brief The stream this task's device work must be placed on.
+   *
+   * Supplied by whoever is running the task rather than created here: Realm
+   * assigns each task on a GPU processor a stream of its own and detects the
+   * task's device work through it, so work placed anywhere else is not ordered
+   * against the task's dependencies.
+   */
+  virtual device_stream_t get_device_stream() const = 0;
   virtual PCGOperatorAttrs get_op_attrs() const = 0;
   virtual LossAttrs get_loss_attrs() const = 0;
   virtual PerDeviceOpState get_per_device_op_state() const = 0;

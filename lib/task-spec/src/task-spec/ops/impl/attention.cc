@@ -60,7 +60,7 @@ static DeviceSpecificPerDeviceOpState
   positive_int num_heads = attrs.num_heads;
 
   std::optional<MHAPerDeviceState> per_device_state = init_kernel(
-      /*device_type=*/kernel_device_type,
+      /*stream=*/acc.get_device_stream(),
       /*per_device_ff_handle=*/handle,
       /*allocator=*/allocator,
       /*num_samples=*/num_samples.int_from_positive_int(),
@@ -90,13 +90,13 @@ static std::optional<milliseconds_t>
   auto output = acc.get_tensor<Permissions::WO>(TensorSlotName::OUTPUT);
 
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   std::optional<MHAPerDeviceState> per_device_state =
       acc.get_per_device_op_state().require_mha();
 
   return profile(forward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[MultiHeadAttention] forward_time = {:.2lf}ms\n",
                  per_device_state,
                  query.get_float_ptr(),
@@ -122,7 +122,7 @@ static std::optional<milliseconds_t>
   auto value_grad = acc.get_tensor_grad<Permissions::RW>(TensorSlotName::VALUE);
 
   ProfilingSettings profiling = acc.get_profiling_settings();
-  DeviceType kernel_device_type = acc.get_kernel_device_type();
+  device_stream_t stream = acc.get_device_stream();
   std::optional<MHAPerDeviceState> per_device_state =
       acc.get_per_device_op_state().require_mha();
 
@@ -140,7 +140,7 @@ static std::optional<milliseconds_t>
 
   return profile(backward_kernel,
                  profiling,
-                 kernel_device_type,
+                 stream,
                  "[MultiHeadAttention] backward_time = {:.2lf}ms\n",
                  per_device_state,
                  query.get_float_ptr(),

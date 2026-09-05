@@ -1,6 +1,7 @@
 #include "realm-execution/realm_context.h"
 #include "kernels/device_handle_t.dtg.h"
 #include "kernels/device_handle_t.h"
+#include "kernels/device_stream_t.h"
 #include "op-attrs/datatype.h"
 #include "op-attrs/parallel_tensor_shape.h"
 #include "op-attrs/tensor_dims.dtg.h"
@@ -27,6 +28,7 @@
 #include "utils/one_to_many/one_to_many.h"
 #include "utils/optional.h"
 #include "utils/positive_int/positive_int.h"
+#include <realm/cuda/cuda_module.h>
 
 namespace FlexFlow {
 
@@ -181,6 +183,33 @@ Realm::Processor RealmContext::get_current_processor() const {
 
 Allocator &RealmContext::get_current_device_allocator() {
   return this->allocator;
+}
+
+device_stream_t RealmContext::get_current_device_stream() const {
+  if (this->processor.kind() != Realm::Processor::TOC_PROC) {
+    return get_cpu_device_stream();
+  }
+
+  cudaStream_t stream = Realm::Cuda::get_task_cuda_stream();
+  ASSERT(stream != nullptr,
+         "Realm returned no task stream; get_current_device_stream is only "
+         "meaningful inside a task running on a GPU processor");
+
+  // Asking for the task's stream is the same thing as promising to keep the
+  // task's device work on it, so say so here rather than somewhere the two
+  // could drift apart. Without this Realm cannot tell where a task's work
+  // went, and falls back to a full context synchronization at the end of every
+  // task to be sure it has finished.
+  //
+  // This is only sound because nothing launches work anywhere else: every
+  // kernel is given this stream as an argument, every cuDNN and cuBLAS handle
+  // is bound to it before use, and the few host-to-device copies inside tasks
+  // go through cudaMemcpyAsync on it. Realm's task streams are created
+  // non-blocking, so anything left on the default stream would *not* be
+  // ordered against this one.
+  Realm::Cuda::set_task_ctxsync_required(false);
+
+  return get_gpu_device_stream(stream);
 }
 
 global_device_id_t RealmContext::get_current_global_device_id() const {

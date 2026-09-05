@@ -26,6 +26,7 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
     Allocator allocator = create_local_cuda_memory_allocator();
 
     MHAPerDeviceState state = Kernels::MultiHeadAttention::gpu_init_kernel(
+        managed_stream.raw_stream(),
         managed_handle.raw_handle(),
         allocator,
         /*num_samples=*/num_samples.int_from_positive_int(),

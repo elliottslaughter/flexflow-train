@@ -66,7 +66,8 @@ void per_device_op_state_init_task_body(void const *args,
                       task_args.profiling_settings,
                       device_handle,
                       task_args.optimizer_attrs,
-                      ctx.get_current_global_device_id());
+                      ctx.get_current_global_device_id(),
+                      ctx.get_current_device_stream());
   DeviceSpecificPerDeviceOpState result_state =
       assert_unwrap(result_invocation.node_attrs.per_device_op_state);
   // Important: to make sure this doesn't get deallocated, we intentionally leak

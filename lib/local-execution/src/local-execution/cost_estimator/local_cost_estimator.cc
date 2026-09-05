@@ -2,6 +2,7 @@
 #include "compiler/machine_mapping/machine_view.dtg.h"
 #include "kernels/create_local_allocator_for_device_type.h"
 #include "kernels/device.h"
+#include "kernels/device_stream_t.h"
 #include "kernels/local_cpu_allocator.h"
 #include "kernels/local_cuda_allocator.h"
 #include "local-execution/computation_graph_instance.h"
@@ -34,7 +35,13 @@ LocalCostEstimator::LocalCostEstimator(
     global_device_id_t device_idx)
     : interconnect_specification(interconnect_specification),
       allocator(allocator), profiling_settings(profiling_settings),
-      device_handle(device_handle), device_idx(device_idx) {}
+      device_handle(device_handle), device_idx(device_idx),
+      owned_stream(device_idx.device_type == DeviceType::GPU
+                       ? std::make_optional<ManagedFFStream>()
+                       : std::nullopt),
+      stream(device_idx.device_type == DeviceType::GPU
+                 ? get_gpu_device_stream(owned_stream.value().raw_stream())
+                 : get_cpu_device_stream()) {}
 
 static ComputationGraph computation_graph_for_local_cost_estimation(
     ComputationGraphOpAttrs const &op,
@@ -124,7 +131,8 @@ OpCostMetrics LocalCostEstimator::estimate_cost(
       /*allocator=*/allocator,
       /*profiling_settings=*/this->profiling_settings,
       /*device_handle=*/this->device_handle,
-      /*device_idx=*/this->device_idx);
+      /*device_idx=*/this->device_idx,
+      /*stream=*/this->stream);
 
   // execute layer
   dynamic_layer_guid_t operator_layer_guid{get_layer_by_name(cg, "operator")};

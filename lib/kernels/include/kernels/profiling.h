@@ -2,7 +2,7 @@
 #define _FLEXFLOW_KERNELS_PROFILING_H
 
 #include "kernels/device.h"
-#include "kernels/device_stream_t.h"
+#include "kernels/device_stream_t.dtg.h"
 #include "kernels/profiling_settings.dtg.h"
 #include "pcg/device_type.dtg.h"
 #include "utils/units/milliseconds_t.h"
@@ -13,16 +13,17 @@ namespace FlexFlow {
 template <typename F, typename... Ts>
 std::optional<milliseconds_t> profiling_wrapper(F const &f,
                                                 bool enable_profiling,
-                                                DeviceType device_type,
+                                                device_stream_t const &stream,
                                                 Ts &&...ts) {
   if (enable_profiling) {
     ProfilingSettings settings = ProfilingSettings{
         /*warmup_iters=*/0,
         /*measure_iters=*/1,
     };
-    return profiling_wrapper<F, Ts...>(f, settings, std::forward<Ts>(ts)...);
+    return profiling_wrapper<F, Ts...>(
+        f, settings, stream, std::forward<Ts>(ts)...);
   } else {
-    f(get_stream_for_device_type(device_type), std::forward<Ts>(ts)...);
+    f(stream, std::forward<Ts>(ts)...);
     return std::nullopt;
   }
 }
@@ -31,27 +32,26 @@ template <typename F, typename... Ts>
 std::optional<milliseconds_t>
     profiling_wrapper(F const &f,
                       ProfilingSettings const &settings,
-                      DeviceType device_type,
+                      device_stream_t const &stream,
                       Ts &&...ts) {
   if (settings.measure_iters <= 0) {
     return std::nullopt;
   }
 
-  if (device_type == DeviceType::GPU) {
-    return gpu_profiling_wrapper(f, settings, std::forward<Ts>(ts)...);
+  if (stream.is_gpu()) {
+    return gpu_profiling_wrapper(f, settings, stream, std::forward<Ts>(ts)...);
   } else {
-    ASSERT(device_type == DeviceType::CPU);
-    return cpu_profiling_wrapper(f, settings, std::forward<Ts>(ts)...);
+    ASSERT(stream.is_cpu());
+    return cpu_profiling_wrapper(f, settings, stream, std::forward<Ts>(ts)...);
   }
 }
 
 template <typename F, typename... Ts>
 milliseconds_t cpu_profiling_wrapper(F const &f,
                                      ProfilingSettings const &settings,
+                                     device_stream_t const &stream,
                                      Ts &&...ts) {
   ASSERT(settings.measure_iters > 0);
-
-  device_stream_t stream = get_cpu_device_stream();
 
   using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;
 
@@ -77,10 +77,9 @@ milliseconds_t cpu_profiling_wrapper(F const &f,
 template <typename F, typename... Ts>
 milliseconds_t gpu_profiling_wrapper(F const &f,
                                      ProfilingSettings const &settings,
+                                     device_stream_t const &stream,
                                      Ts &&...ts) {
   ASSERT(settings.measure_iters > 0);
-
-  device_stream_t stream = get_gpu_device_stream();
 
   ffEvent_t t_start, t_end;
   checkCUDA(ffEventCreate(&t_start));
