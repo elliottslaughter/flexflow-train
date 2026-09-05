@@ -2,6 +2,7 @@
 #include "kernels/datatype_dispatch.h"
 #include "op-attrs/tensor_dims.h"
 #include "utils/containers/reversed.h"
+#include <cstdint>
 
 namespace FlexFlow {
 
@@ -129,6 +130,61 @@ __global__ void add_with_stride(float *output,
     int input_offset = blk_idx * input_blk_size + blk_offset;
     int output_offset = blk_idx * output_blk_size + blk_offset;
     output[output_offset] += input[input_offset];
+  }
+}
+
+// One row of thread blocks per strided block, so that the offset within a block
+// does not have to be recovered with an integer division per element.
+template <typename T>
+__global__ void copy_with_stride_rows(T *output,
+                                      T const *input,
+                                      int copy_size,
+                                      int output_blk_size,
+                                      int input_blk_size) {
+  size_t out_base = static_cast<size_t>(blockIdx.y) * output_blk_size;
+  size_t in_base = static_cast<size_t>(blockIdx.y) * input_blk_size;
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < copy_size;
+       i += blockDim.x * gridDim.x) {
+    output[out_base + i] = input[in_base + i];
+  }
+}
+
+void launch_copy_with_stride(cudaStream_t stream,
+                             float *output,
+                             float const *input,
+                             int num_blocks,
+                             int output_blk_size,
+                             int input_blk_size) {
+  int copy_size = min(output_blk_size, input_blk_size);
+  if (copy_size <= 0 || num_blocks <= 0) {
+    return;
+  }
+
+  int const threads = 256;
+  int const max_x_blocks = 8192;
+
+  // 128-bit accesses where the shapes and the addresses allow it, which for a
+  // concat along the channel axis they usually do: a block is a whole number of
+  // images and the instances come back well aligned.
+  bool vectorizable = copy_size % 4 == 0 && output_blk_size % 4 == 0 &&
+                      input_blk_size % 4 == 0 &&
+                      reinterpret_cast<std::uintptr_t>(output) % 16 == 0 &&
+                      reinterpret_cast<std::uintptr_t>(input) % 16 == 0;
+
+  if (vectorizable) {
+    int n = copy_size / 4;
+    dim3 grid(min((n + threads - 1) / threads, max_x_blocks), num_blocks);
+    copy_with_stride_rows<float4>
+        <<<grid, threads, 0, stream>>>(reinterpret_cast<float4 *>(output),
+                                       reinterpret_cast<float4 const *>(input),
+                                       n,
+                                       output_blk_size / 4,
+                                       input_blk_size / 4);
+  } else {
+    dim3 grid(min((copy_size + threads - 1) / threads, max_x_blocks),
+              num_blocks);
+    copy_with_stride_rows<float><<<grid, threads, 0, stream>>>(
+        output, input, copy_size, output_blk_size, input_blk_size);
   }
 }
 

@@ -117,6 +117,24 @@ __global__ void add_with_stride(float *output,
                                 int num_blocks,
                                 int output_blk_size,
                                 int input_blk_size);
+/**
+ * \brief Copy \p num_blocks blocks of \c min(output_blk_size, input_blk_size)
+ * elements, taking a block every \p input_blk_size elements of \p input and
+ * placing it every \p output_blk_size elements of \p output.
+ *
+ * This is what concat and split are: a concat along an axis writes each input
+ * into one stripe of the output, once per index of everything outside that
+ * axis. Prefer this over launching \ref copy_with_stride directly -- it picks
+ * the block shape and the vector width, and the difference is most of the
+ * memory bandwidth.
+ */
+void launch_copy_with_stride(cudaStream_t stream,
+                             float *output,
+                             float const *input,
+                             int num_blocks,
+                             int output_blk_size,
+                             int input_blk_size);
+
 __global__ void copy_with_stride(float *output,
                                  float const *input,
                                  int num_blocks,
