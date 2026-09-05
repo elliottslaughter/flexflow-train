@@ -26,7 +26,8 @@ std::vector<PreparedInvocation> prepare_invocations(
       execution_order, [&](DynamicNodeInvocation const &invocation) {
         return PreparedInvocation{
             /*invocation=*/invocation,
-            /*invocation_id=*/dynamic_graph_get_id_for_invocation(g, invocation),
+            /*invocation_id=*/
+            dynamic_graph_get_id_for_invocation(g, invocation),
             /*input_ids=*/ids_for(invocation.inputs),
             /*output_ids=*/ids_for(invocation.outputs),
             /*tensor_backing=*/

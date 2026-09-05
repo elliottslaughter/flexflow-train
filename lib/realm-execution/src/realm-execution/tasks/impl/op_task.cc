@@ -4,18 +4,15 @@
 #include "realm-execution/dynamic_tensor_accessor_from_instance.h"
 #include "realm-execution/op_task_arg_registry.h"
 #include "realm-execution/tasks/impl/op_task_args.dtg.h"
-#include "realm-execution/tasks/impl/serializable_op_task_launch_args.dtg.h"
 #include "realm-execution/tasks/impl/serializable_op_task_args.h"
+#include "realm-execution/tasks/impl/serializable_op_task_launch_args.dtg.h"
 #include "realm-execution/tasks/serializer/task_arg_serializer.h"
 #include "realm-execution/tasks/task_id_t.h"
 #include "task-spec/per_device_op_state.dtg.h"
 #include "task-spec/per_device_op_state.h"
-#include "task-spec/permissions.h"
 #include "utils/containers/map_values.h"
 #include "utils/containers/transform.h"
 #include "utils/optional.h"
-#include <chrono>
-#include <cstdio>
 #include <type_traits>
 
 namespace FlexFlow {
@@ -40,21 +37,9 @@ void op_task_body(void const *args,
       device_handle_t_from_device_specific_managed_ff_handle(
           task_args.device_handle, ctx.get_current_global_device_id());
 
-  // Patch the invocation to include the provided instances
-  auto map_instance_to_accessor = [&](DynamicValueAttrs const &value) {
-    DynamicValueAttrs result = value;
-    auto const &[inst, event] = task_args.tensor_backing.backing.at(value);
-    result.accessor = dynamic_tensor_accessor_from_instance(
-        inst,
-        event,
-        assert_unwrap(value.parallel_tensor_shape),
-        Permissions::RW, // FIXME: get real permissions?
-        ctx.get_current_processor());
-    return result;
-  };
-  DynamicNodeInvocation invocation = task_args.invocation;
-  invocation.inputs = map_values(invocation.inputs, map_instance_to_accessor);
-  invocation.outputs = map_values(invocation.outputs, map_instance_to_accessor);
+  // The invocation already carries its accessors; they were resolved once,
+  // when these arguments were registered.
+  DynamicNodeInvocation const &invocation = task_args.invocation;
 
   execute_dynamic_node_invocation(
       /*invocation=*/invocation,

@@ -1,9 +1,14 @@
 #include "realm-execution/tasks/impl/op_task_arg_register_task.h"
+#include "realm-execution/dynamic_tensor_accessor_from_instance.h"
 #include "realm-execution/op_task_arg_registry.h"
 #include "realm-execution/tasks/impl/serializable_op_task_arg_register_args.dtg.h"
 #include "realm-execution/tasks/impl/serializable_op_task_args.h"
 #include "realm-execution/tasks/serializer/task_arg_serializer.h"
 #include "realm-execution/tasks/task_id_t.dtg.h"
+#include "task-spec/dynamic_graph/dynamic_value_attrs.dtg.h"
+#include "task-spec/permissions.h"
+#include "utils/containers/map_values.h"
+#include "utils/optional.h"
 
 namespace FlexFlow {
 
@@ -15,8 +20,31 @@ void op_task_arg_register_task_body(void const *args,
   SerializableOpTaskArgRegisterArgs task_args =
       deserialize_task_args<SerializableOpTaskArgRegisterArgs>(args, arglen);
 
-  register_op_task_args(task_args.invocation_id,
-                        op_task_args_from_serializable(task_args.args));
+  OpTaskArgs args_for_task = op_task_args_from_serializable(task_args.args);
+
+  // Resolve the instances to accessors here rather than on every launch. Which
+  // instance backs a value does not change once the graph exists, and a task
+  // body is only partly hidden behind device work (measured: about a third of
+  // bodies start while the previous task's kernels are still running), so what
+  // it costs shows up in the iteration time.
+  RealmContext ctx{proc};
+  auto map_instance_to_accessor = [&](DynamicValueAttrs const &value) {
+    DynamicValueAttrs result = value;
+    auto const &[inst, event] = args_for_task.tensor_backing.backing.at(value);
+    result.accessor = dynamic_tensor_accessor_from_instance(
+        inst,
+        event,
+        assert_unwrap(value.parallel_tensor_shape),
+        Permissions::RW, // FIXME: get real permissions?
+        ctx.get_current_processor());
+    return result;
+  };
+  args_for_task.invocation.inputs =
+      map_values(args_for_task.invocation.inputs, map_instance_to_accessor);
+  args_for_task.invocation.outputs =
+      map_values(args_for_task.invocation.outputs, map_instance_to_accessor);
+
+  register_op_task_args(task_args.invocation_id, args_for_task);
 }
 
 Realm::Event spawn_op_task_arg_register_task(
@@ -25,11 +53,10 @@ Realm::Event spawn_op_task_arg_register_task(
     dynamic_invocation_id_t const &invocation_id,
     OpTaskArgs const &args,
     Realm::Event precondition) {
-  auto serialized_args =
-      serialize_task_args(SerializableOpTaskArgRegisterArgs{
-          /*invocation_id=*/invocation_id,
-          /*args=*/op_task_args_to_serializable(args),
-      });
+  auto serialized_args = serialize_task_args(SerializableOpTaskArgRegisterArgs{
+      /*invocation_id=*/invocation_id,
+      /*args=*/op_task_args_to_serializable(args),
+  });
 
   return ctx.spawn_task(target_proc,
                         task_id_t::OP_TASK_ARG_REGISTER_TASK_ID,

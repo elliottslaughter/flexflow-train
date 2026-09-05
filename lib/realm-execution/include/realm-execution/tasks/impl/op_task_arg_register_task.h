@@ -19,12 +19,12 @@ void op_task_arg_register_task_body(
  * \brief Send \p args to the node that will be running \p invocation_id, once,
  * so that later launches of it need only name it.
  */
-Realm::Event
-    spawn_op_task_arg_register_task(RealmContext &ctx,
-                                    Realm::Processor target_proc,
-                                    dynamic_invocation_id_t const &invocation_id,
-                                    OpTaskArgs const &args,
-                                    Realm::Event precondition);
+Realm::Event spawn_op_task_arg_register_task(
+    RealmContext &ctx,
+    Realm::Processor target_proc,
+    dynamic_invocation_id_t const &invocation_id,
+    OpTaskArgs const &args,
+    Realm::Event precondition);
 
 } // namespace FlexFlow
 

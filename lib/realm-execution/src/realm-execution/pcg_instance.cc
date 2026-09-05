@@ -5,11 +5,11 @@
 #include "realm-execution/distributed_per_device_op_state_initialization.h"
 #include "realm-execution/instance_allocation.h"
 #include "realm-execution/prepared_invocation.h"
-#include "realm-execution/tasks/impl/op_task_arg_register_task.h"
-#include "realm-execution/tasks/impl/op_task_args.dtg.h"
 #include "realm-execution/realm_context.h"
 #include "realm-execution/redops/redop_id_t.h"
 #include "realm-execution/tasks/impl/op_task.h"
+#include "realm-execution/tasks/impl/op_task_arg_register_task.h"
+#include "realm-execution/tasks/impl/op_task_args.dtg.h"
 #include "realm-execution/tensor_instance_backing.h"
 #include "realm-execution/weight_initialization.h"
 #include "task-spec/dynamic_graph/copy_insertion.h"
@@ -204,8 +204,8 @@ PCGInstance create_pcg_instance(
   // Send each invocation's arguments to the node that will run it, once. See
   // register_op_task_args for why.
   for (PreparedInvocation const &prepared : prepared_execution_order) {
-    std::optional<global_device_id_t> device_id =
-        maybe_get_only(assert_unwrap(prepared.invocation.node_attrs.device_ids));
+    std::optional<global_device_id_t> device_id = maybe_get_only(
+        assert_unwrap(prepared.invocation.node_attrs.device_ids));
     if (!device_id.has_value()) {
       continue;
     }

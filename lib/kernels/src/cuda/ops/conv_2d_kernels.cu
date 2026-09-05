@@ -1,5 +1,6 @@
 #include "internal/device.h"
 #include "kernels/conv_2d_kernels_gpu.h"
+#include "kernels/device_scratch.h"
 #include "op-attrs/ops/conv_2d.h"
 #include "op-attrs/tensor_dims.h"
 #include <vector>
@@ -219,19 +220,20 @@ void conv_2d_gpu_forward_kernel(
   checkCUDNN(cudnnSetStream(handle.dnn, stream));
 
   float alpha = 1.0f, beta = 0.0f;
-  checkCUDNN(cudnnConvolutionForward(handle.dnn,
-                                     &alpha,
-                                     per_device_state.inputTensor,
-                                     input.ptr,
-                                     per_device_state.filterDesc,
-                                     filter.ptr,
-                                     per_device_state.convDesc,
-                                     per_device_state.fwdAlgo,
-                                     handle.workSpace,
-                                     handle.workSpaceSize,
-                                     &beta,
-                                     per_device_state.outputTensor,
-                                     output.ptr));
+  checkCUDNN(cudnnConvolutionForward(
+      handle.dnn,
+      &alpha,
+      per_device_state.inputTensor,
+      input.ptr,
+      per_device_state.filterDesc,
+      filter.ptr,
+      per_device_state.convDesc,
+      per_device_state.fwdAlgo,
+      get_device_scratch_for_stream(stream, handle.workSpaceSize),
+      handle.workSpaceSize,
+      &beta,
+      per_device_state.outputTensor,
+      output.ptr));
 
   if (bias.has_value()) {
     checkCUDNN(cudnnAddTensor(handle.dnn,
@@ -264,19 +266,20 @@ void conv_2d_gpu_backward_kernel(
   // into rather than overwritten
   float alpha = 1.0f;
 
-  checkCUDNN(cudnnConvolutionBackwardFilter(handle.dnn,
-                                            &alpha,
-                                            per_device_state.inputTensor,
-                                            input.ptr,
-                                            per_device_state.outputTensor,
-                                            output_grad.ptr,
-                                            per_device_state.convDesc,
-                                            per_device_state.bwdFilterAlgo,
-                                            handle.workSpace,
-                                            handle.workSpaceSize,
-                                            &alpha,
-                                            per_device_state.filterDesc,
-                                            filter_grad.ptr));
+  checkCUDNN(cudnnConvolutionBackwardFilter(
+      handle.dnn,
+      &alpha,
+      per_device_state.inputTensor,
+      input.ptr,
+      per_device_state.outputTensor,
+      output_grad.ptr,
+      per_device_state.convDesc,
+      per_device_state.bwdFilterAlgo,
+      get_device_scratch_for_stream(stream, handle.workSpaceSize),
+      handle.workSpaceSize,
+      &alpha,
+      per_device_state.filterDesc,
+      filter_grad.ptr));
 
   if (bias_grad.has_value()) {
     checkCUDNN(cudnnConvolutionBackwardBias(handle.dnn,
@@ -288,19 +291,20 @@ void conv_2d_gpu_backward_kernel(
                                             bias_grad.value().ptr));
   }
 
-  checkCUDNN(cudnnConvolutionBackwardData(handle.dnn,
-                                          &alpha,
-                                          per_device_state.filterDesc,
-                                          filter.ptr,
-                                          per_device_state.outputTensor,
-                                          output_grad.ptr,
-                                          per_device_state.convDesc,
-                                          per_device_state.bwdDataAlgo,
-                                          handle.workSpace,
-                                          handle.workSpaceSize,
-                                          &alpha,
-                                          per_device_state.inputTensor,
-                                          input_grad.ptr));
+  checkCUDNN(cudnnConvolutionBackwardData(
+      handle.dnn,
+      &alpha,
+      per_device_state.filterDesc,
+      filter.ptr,
+      per_device_state.outputTensor,
+      output_grad.ptr,
+      per_device_state.convDesc,
+      per_device_state.bwdDataAlgo,
+      get_device_scratch_for_stream(stream, handle.workSpaceSize),
+      handle.workSpaceSize,
+      &alpha,
+      per_device_state.inputTensor,
+      input_grad.ptr));
 }
 
 void conv_2d_gpu_cleanup_kernel(Conv2DPerDeviceState &per_device_state) {
