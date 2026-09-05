@@ -1,8 +1,10 @@
 #include "internal/device.h"
 #include "kernels/conv_2d_kernels_gpu.h"
+#include "kernels/device_aux_streams.h"
 #include "kernels/device_scratch.h"
 #include "op-attrs/ops/conv_2d.h"
 #include "op-attrs/tensor_dims.h"
+#include <atomic>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -335,12 +337,27 @@ void conv_2d_gpu_backward_kernel(
     std::optional<GenericTensorAccessorW> const &bias_grad) {
   ASSERT(bias_grad.has_value() == attrs.use_bias);
 
-  checkCUDNN(cudnnSetStream(handle.dnn, stream));
+  // The weight gradient has nothing waiting on it until the update pass, so it
+  // does not have to sit on the critical path the rest of the backward pass
+  // runs down. Put it on a stream of its own where there is one; the data
+  // gradient, which the next layer's backward pass waits for, stays on the
+  // task's own stream.
+  ffStream_t wgrad_stream = stream;
+  ffHandle_t wgrad_dnn = handle.dnn;
+  if (num_aux_streams() > 0) {
+    static std::atomic<int> next_aux{0};
+    int index = next_aux++ % num_aux_streams();
+    wgrad_stream = get_aux_stream(stream, index);
+    wgrad_dnn = get_aux_dnn_handle(stream, index);
+    fork_to_aux_stream(stream, wgrad_stream);
+  }
+
+  checkCUDNN(cudnnSetStream(wgrad_dnn, wgrad_stream));
 
   float alpha = 1.0f, beta = 0.0f;
 
   checkCUDNN(cudnnConvolutionBackwardFilter(
-      handle.dnn,
+      wgrad_dnn,
       &alpha,
       per_device_state.inputTensor,
       input.ptr,
@@ -348,7 +365,7 @@ void conv_2d_gpu_backward_kernel(
       output_grad.ptr,
       per_device_state.convDesc,
       per_device_state.bwdFilterAlgo,
-      get_device_scratch_for_stream(stream,
+      get_device_scratch_for_stream(wgrad_stream,
                                     per_device_state.bwdFilterWorkspaceSize),
       per_device_state.bwdFilterWorkspaceSize,
       &beta,
@@ -356,7 +373,7 @@ void conv_2d_gpu_backward_kernel(
       filter_grad.ptr));
 
   if (bias_grad.has_value()) {
-    checkCUDNN(cudnnConvolutionBackwardBias(handle.dnn,
+    checkCUDNN(cudnnConvolutionBackwardBias(wgrad_dnn,
                                             &alpha,
                                             per_device_state.outputTensor,
                                             output_grad.ptr,
@@ -365,6 +382,7 @@ void conv_2d_gpu_backward_kernel(
                                             bias_grad.value().ptr));
   }
 
+  checkCUDNN(cudnnSetStream(handle.dnn, stream));
   checkCUDNN(cudnnConvolutionBackwardData(
       handle.dnn,
       &alpha,
