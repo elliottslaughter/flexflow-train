@@ -7,6 +7,7 @@ namespace FlexFlow {
 
 void initialize_tensor(GenericTensorAccessorW const &tensor,
                        InitializerAttrs const &attrs,
+                       device_stream_t const &stream,
                        size_t salt) {
   if (tensor.device_type == DeviceType::CPU) {
     initialize_tensor_cpu(tensor, attrs, salt);
@@ -19,8 +20,8 @@ void initialize_tensor(GenericTensorAccessorW const &tensor,
       tensor.shape, staging_buffer.data(), DeviceType::CPU};
 
   initialize_tensor_cpu(staging, attrs, salt);
-  copy_accessor_data_to_l_from_r(
-      tensor, read_only_accessor_from_write_accessor(staging));
+  copy_accessor_data_to_l_from_r_on_stream(
+      tensor, read_only_accessor_from_write_accessor(staging), stream);
 }
 
 } // namespace FlexFlow

@@ -31,7 +31,11 @@ void weight_init_task_body(void const *args,
                                      ctx.get_current_processor())
                                      .require_write();
 
-  initialize_weight_shard(shard, value, task_args.initializer, task_args.salt);
+  initialize_weight_shard(shard,
+                          value,
+                          task_args.initializer,
+                          ctx.get_current_device_stream(),
+                          task_args.salt);
 }
 
 Realm::Event spawn_weight_init_task(RealmContext &ctx,

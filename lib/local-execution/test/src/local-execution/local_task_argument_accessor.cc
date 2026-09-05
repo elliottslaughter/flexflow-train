@@ -1,5 +1,6 @@
 #include "local-execution/local_task_argument_accessor.h"
 #include "kernels/device_handle_t.h"
+#include "kernels/device_stream_t.h"
 #include "kernels/local_cpu_allocator.h"
 #include "kernels/profiling_settings.dtg.h"
 #include "op-attrs/ops/input_attrs.dtg.h"
@@ -69,6 +70,7 @@ TEST_SUITE(FF_TEST_SUITE) {
         /*per_device_op_state=*/std::nullopt,
         /*optimizer_attrs=*/std::nullopt,
         /*device_idx=*/device_idx,
+        /*stream=*/get_cpu_device_stream(),
     };
 
     SUBCASE("get_tensor") {

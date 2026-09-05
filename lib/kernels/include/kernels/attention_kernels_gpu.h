@@ -9,7 +9,8 @@
 
 namespace FlexFlow::Kernels::MultiHeadAttention {
 
-MHAPerDeviceState gpu_init_kernel(PerDeviceFFHandle const &,
+MHAPerDeviceState gpu_init_kernel(ffStream_t stream,
+                                  PerDeviceFFHandle const &,
                                   Allocator &,
                                   int num_samples,
                                   int num_heads,

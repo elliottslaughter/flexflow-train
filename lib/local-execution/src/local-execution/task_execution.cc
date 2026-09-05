@@ -49,7 +49,8 @@ TaskArgumentAccessor make_task_argument_accessor_for_invocation(
     device_handle_t const &ff_handle,
     std::optional<PerDeviceOpState> const &per_device_op_state,
     std::optional<OptimizerAttrs> const &optimizer_attrs,
-    global_device_id_t device_idx) {
+    global_device_id_t device_idx,
+    device_stream_t const &stream) {
   auto make_param = [&](DynamicTensorSlot const &slot) {
     return make_task_tensor_parameter_from_dynamic_slot(slot, optimizer_attrs);
   };
@@ -78,7 +79,8 @@ TaskArgumentAccessor make_task_argument_accessor_for_invocation(
                }),
       /*per_device_op_state=*/per_device_op_state,
       /*optimizer_attrs=*/optimizer_attrs,
-      /*device_idx=*/device_idx);
+      /*device_idx=*/device_idx,
+      /*stream=*/stream);
 }
 
 std::optional<milliseconds_t> execute_dynamic_node_invocation(
@@ -88,7 +90,8 @@ std::optional<milliseconds_t> execute_dynamic_node_invocation(
     device_handle_t const &ff_handle,
     std::optional<PerDeviceOpState> const &per_device_op_state,
     std::optional<OptimizerAttrs> const &optimizer_attrs,
-    global_device_id_t device_idx) {
+    global_device_id_t device_idx,
+    device_stream_t const &stream) {
   TaskArgumentAccessor arg_accessor =
       make_task_argument_accessor_for_invocation(
           /*invocation=*/invocation,
@@ -97,7 +100,8 @@ std::optional<milliseconds_t> execute_dynamic_node_invocation(
           /*ff_handle=*/ff_handle,
           /*per_device_op_state=*/per_device_op_state,
           /*optimizer_attrs=*/optimizer_attrs,
-          /*device_idx=*/device_idx);
+          /*device_idx=*/device_idx,
+          /*stream=*/stream);
 
   DynamicTaskType task_type = assert_unwrap(invocation.node_attrs.task_type);
   std::optional<milliseconds_t> result;

@@ -19,7 +19,8 @@
 
 namespace FlexFlow::Kernels::MultiHeadAttention {
 
-MHAPerDeviceState gpu_init_kernel(PerDeviceFFHandle const &handle,
+MHAPerDeviceState gpu_init_kernel(ffStream_t stream,
+                                  PerDeviceFFHandle const &handle,
                                   Allocator &allocator,
                                   int num_samples,
                                   int num_heads,
@@ -33,7 +34,6 @@ MHAPerDeviceState gpu_init_kernel(PerDeviceFFHandle const &handle,
                                   int qoSeqLength,
                                   int kvSeqLength,
                                   bool add_bias_kv) {
-  cudaStream_t stream;
   ffAttnDescriptor_t attnDesc;
   ffSeqDataDescriptor_t qDesc;
   ffSeqDataDescriptor_t kDesc;
@@ -45,7 +45,6 @@ MHAPerDeviceState gpu_init_kernel(PerDeviceFFHandle const &handle,
   size_t reserveSpaceSize;
   size_t weightSize;
 
-  checkCUDA(get_legion_stream(&stream));
   checkCUDNN(cudnnSetStream(handle.dnn, stream));
   checkCUDNN(cudnnCreateAttnDescriptor(&attnDesc));
   checkCUDNN(cudnnCreateSeqDataDescriptor(&qDesc));
@@ -173,15 +172,20 @@ MHAPerDeviceState gpu_init_kernel(PerDeviceFFHandle const &handle,
     size_t totalSize = reserveSpaceSize + sizeof(int) * num_samples * 2;
 
     devQoSeqArray = (int *)allocator.allocate(totalSize);
-    checkCUDA(cudaMemcpy(devQoSeqArray,
-                         qoSeqArray.get(),
-                         sizeof(int) * num_samples,
-                         cudaMemcpyHostToDevice));
+    // See the note in batch_norm_gpu_init_kernel: the default stream is not
+    // ordered against Realm's task streams.
+    checkCUDA(cudaMemcpyAsync(devQoSeqArray,
+                              qoSeqArray.get(),
+                              sizeof(int) * num_samples,
+                              cudaMemcpyHostToDevice,
+                              stream));
     devKvSeqArray = devQoSeqArray + num_samples;
-    checkCUDA(cudaMemcpy(devKvSeqArray,
-                         kvSeqArray.get(),
-                         sizeof(int) * num_samples,
-                         cudaMemcpyHostToDevice));
+    checkCUDA(cudaMemcpyAsync(devKvSeqArray,
+                              kvSeqArray.get(),
+                              sizeof(int) * num_samples,
+                              cudaMemcpyHostToDevice,
+                              stream));
+    checkCUDA(cudaStreamSynchronize(stream));
     reserveSpace = devKvSeqArray + num_samples;
   }
   // allocate memory for loWinIdx/hiWinIdx

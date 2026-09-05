@@ -77,6 +77,7 @@ struct CopyShardOfTensor {
 void initialize_weight_shard(GenericTensorAccessorW const &shard,
                              DynamicValueAttrs const &value,
                              InitializerAttrs const &initializer,
+                             device_stream_t const &stream,
                              size_t salt) {
   ParallelTensorShape shape = assert_unwrap(value.parallel_tensor_shape);
 
@@ -93,7 +94,7 @@ void initialize_weight_shard(GenericTensorAccessorW const &shard,
     // The common case: the weight is either not parallelized at all or only
     // replicated, so this shard holds the whole tensor and can be generated
     // straight into it.
-    initialize_tensor(shard, initializer, salt);
+    initialize_tensor(shard, initializer, stream, salt);
     return;
   }
 
@@ -114,8 +115,8 @@ void initialize_weight_shard(GenericTensorAccessorW const &shard,
       read_only_accessor_from_write_accessor(full),
       assert_unwrap(value.shard_coord));
 
-  copy_accessor_data_to_l_from_r(
-      shard, read_only_accessor_from_write_accessor(shard_staging));
+  copy_accessor_data_to_l_from_r_on_stream(
+      shard, read_only_accessor_from_write_accessor(shard_staging), stream);
 }
 
 } // namespace FlexFlow

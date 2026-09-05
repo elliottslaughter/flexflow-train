@@ -1,6 +1,7 @@
 #ifndef _FLEXFLOW_LIB_LOCAL_EXECUTION_INCLUDE_LOCAL_EXECUTION_WEIGHT_INITIALIZATION_H
 #define _FLEXFLOW_LIB_LOCAL_EXECUTION_INCLUDE_LOCAL_EXECUTION_WEIGHT_INITIALIZATION_H
 
+#include "kernels/device_stream_t.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_open_dataflow_graph.dtg.h"
 
 namespace FlexFlow {
@@ -16,7 +17,8 @@ namespace FlexFlow {
  * \note \p g must already have had its tensors allocated (see \ref
  * perform_tensor_allocation).
  */
-void perform_weight_initialization(DynamicOpenDataflowGraph const &g);
+void perform_weight_initialization(DynamicOpenDataflowGraph const &g,
+                                   device_stream_t const &stream);
 
 } // namespace FlexFlow
 

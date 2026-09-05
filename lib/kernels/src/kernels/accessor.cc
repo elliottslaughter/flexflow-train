@@ -1,6 +1,7 @@
 #include "kernels/accessor.h"
 #include "kernels/allocation.h"
 #include "kernels/datatype_dispatch.h"
+#include "kernels/device_stream_t.dtg.h"
 #include "op-attrs/ff_ordered/ff_ordered_get_idxs.h"
 #include "op-attrs/tensor_dims_coord.h"
 #include "op-attrs/tensor_shape.h"
@@ -43,6 +44,27 @@ TensorShape
   return accessor.shape;
 }
 
+void copy_accessor_data_to_l_from_r_on_stream(
+    GenericTensorAccessorW const &dst_accessor,
+    GenericTensorAccessorR const &src_accessor,
+    device_stream_t const &stream) {
+  if (!stream.is_gpu()) {
+    copy_accessor_data_to_l_from_r(dst_accessor, src_accessor);
+    return;
+  }
+
+  size_t num_bytes = get_size_in_bytes(dst_accessor.shape)
+                         .unwrap_num_bytes()
+                         .unwrap_nonnegative();
+  checkCUDA(cudaMemcpyAsync(dst_accessor.ptr,
+                            src_accessor.ptr,
+                            num_bytes,
+                            cudaMemcpyDefault,
+                            stream.require_gpu()));
+  // Blocking, so that a host-side source buffer may go out of scope on return.
+  checkCUDA(cudaStreamSynchronize(stream.require_gpu()));
+}
+
 void copy_accessor_data_to_l_from_r(
     GenericTensorAccessorW const &dst_accessor,
     GenericTensorAccessorR const &src_accessor) {
@@ -60,6 +82,10 @@ void copy_accessor_data_to_l_from_r(
              dst_device_type == DeviceType::GPU) {
     checkCUDA(cudaMemcpy(
         dst_accessor.ptr, src_accessor.ptr, num_bytes, cudaMemcpyHostToDevice));
+    // A host-to-device cudaMemcpy out of pageable memory returns once the
+    // source has been staged, which is not the same as the transfer having
+    // landed. Everything using this overload expects it to have.
+    checkCUDA(cudaStreamSynchronize(0));
   } else if (src_device_type == DeviceType::GPU &&
              dst_device_type == DeviceType::CPU) {
     checkCUDA(cudaMemcpy(

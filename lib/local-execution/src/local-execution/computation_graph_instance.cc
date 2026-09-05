@@ -27,9 +27,15 @@ ComputationGraphInstance::ComputationGraphInstance(
     std::vector<DynamicNodeInvocation> const &execution_order,
     Allocator &allocator,
     OptimizerAttrs const &optimizer_attrs,
-    std::optional<GenericTensorAccessorW> logit_grad_tensor)
+    std::optional<GenericTensorAccessorW> logit_grad_tensor,
+    device_stream_t const &stream)
     : execution_order(execution_order), allocator(allocator),
-      optimizer_attrs(optimizer_attrs), logit_grad_tensor(logit_grad_tensor) {}
+      optimizer_attrs(optimizer_attrs), logit_grad_tensor(logit_grad_tensor),
+      stream(stream) {}
+
+device_stream_t const &ComputationGraphInstance::get_device_stream() const {
+  return this->stream;
+}
 
 std::vector<DynamicNodeInvocation> const &
     ComputationGraphInstance::get_execution_order() const {
@@ -66,7 +72,8 @@ ComputationGraphInstance create_computation_graph_instance(
     std::map<DynamicValueAttrs, DynamicTensorAccessor> const &input_tensors,
     Allocator &allocator,
     device_handle_t const &device_handle,
-    global_device_id_t device_idx) {
+    global_device_id_t device_idx,
+    device_stream_t const &stream) {
   DynamicOpenDataflowGraph dg = make_dynamic_open_dataflow_graph_from_cg(cg);
   dg = perform_pass_expansion(dg);
 
@@ -87,7 +94,7 @@ ComputationGraphInstance create_computation_graph_instance(
   // Nothing else writes a weight before the first forward pass reads it, so
   // without this the model would train starting from whatever happened to be
   // in the memory the weights were allocated out of.
-  perform_weight_initialization(dg);
+  perform_weight_initialization(dg, stream);
 
   std::optional<GenericTensorAccessorW> logit_grad_tensor =
       transform(logit_grad_value, [&](DynamicValueAttrs const &lgv) {
@@ -95,7 +102,7 @@ ComputationGraphInstance create_computation_graph_instance(
       });
 
   dg = perform_per_device_op_state_initialization(
-      dg, allocator, device_handle, optimizer_attrs, device_idx);
+      dg, stream, allocator, device_handle, optimizer_attrs, device_idx);
 
   // Compute the topological ordering of the graph
   auto [kwarg_graph, node_map] =
@@ -104,8 +111,11 @@ ComputationGraphInstance create_computation_graph_instance(
   std::vector<DynamicNodeInvocation> invocation_topo_order = transform(
       node_topo_order, [&](Node node) { return node_map.at_l(node); });
 
-  return ComputationGraphInstance{
-      invocation_topo_order, allocator, optimizer_attrs, logit_grad_tensor};
+  return ComputationGraphInstance{invocation_topo_order,
+                                  allocator,
+                                  optimizer_attrs,
+                                  logit_grad_tensor,
+                                  stream};
 }
 
 static std::map<dynamic_layer_guid_t, std::optional<milliseconds_t>>
@@ -115,7 +125,8 @@ static std::map<dynamic_layer_guid_t, std::optional<milliseconds_t>>
         OptimizerAttrs const &optimizer_attrs,
         std::optional<ProfilingSettings> const &profiling_settings,
         device_handle_t const &ff_handle,
-        global_device_id_t device_idx) {
+        global_device_id_t device_idx,
+        device_stream_t const &stream) {
   return map_from_pairs(
       transform(invocations, [&](DynamicNodeInvocation const &invocation) {
         std::optional<milliseconds_t> timing = execute_dynamic_node_invocation(
@@ -130,7 +141,8 @@ static std::map<dynamic_layer_guid_t, std::optional<milliseconds_t>>
                             op_state, device_idx);
                       }),
             /*optimizer_attrs=*/optimizer_attrs,
-            /*device_idx=*/device_idx);
+            /*device_idx=*/device_idx,
+            /*stream=*/stream);
         return std::pair{invocation.node_attrs.layer_guid, timing};
       }));
 }
@@ -150,7 +162,8 @@ std::map<dynamic_layer_guid_t, std::optional<milliseconds_t>>
           /*optimizer_attrs=*/instance.get_optimizer_attrs(),
           /*profiling_settings=*/profiling_settings,
           /*ff_handle=*/ff_handle,
-          /*device_idx=*/device_idx);
+          /*device_idx=*/device_idx,
+          /*stream=*/instance.get_device_stream());
   instance.update_optimizer_attrs_for_next_iter();
   return result;
 }
@@ -175,7 +188,8 @@ std::map<dynamic_layer_guid_t, std::optional<milliseconds_t>>
       /*optimizer_attrs=*/instance.get_optimizer_attrs(),
       /*profiling_settings=*/profiling_settings,
       /*ff_handle=*/ff_handle,
-      /*device_idx=*/device_idx);
+      /*device_idx=*/device_idx,
+      /*stream=*/instance.get_device_stream());
 }
 
 std::map<dynamic_layer_guid_t, std::optional<milliseconds_t>>
@@ -198,7 +212,8 @@ std::map<dynamic_layer_guid_t, std::optional<milliseconds_t>>
       /*optimizer_attrs=*/instance.get_optimizer_attrs(),
       /*profiling_settings=*/profiling_settings,
       /*ff_handle=*/ff_handle,
-      /*device_idx=*/device_idx);
+      /*device_idx=*/device_idx,
+      /*stream=*/instance.get_device_stream());
 }
 
 void perform_update_pass_for_computation_graph_instance(
@@ -220,7 +235,8 @@ void perform_update_pass_for_computation_graph_instance(
       /*optimizer_attrs=*/instance.get_optimizer_attrs(),
       /*profiling_settings=*/profiling_settings,
       /*ff_handle=*/ff_handle,
-      /*device_idx=*/device_idx);
+      /*device_idx=*/device_idx,
+      /*stream=*/instance.get_device_stream());
   instance.update_optimizer_attrs_for_next_iter();
 }
 

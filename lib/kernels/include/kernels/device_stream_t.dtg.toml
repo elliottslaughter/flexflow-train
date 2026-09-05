@@ -2,6 +2,14 @@ namespace = "FlexFlow"
 name = "device_stream_t"
 type = "variant"
 features = []
+docstring = '''
+\brief The stream a kernel places its device work on, or a marker that the
+kernel runs on the host.
+
+Built with \ref get_gpu_device_stream or \ref get_cpu_device_stream. Note that
+neither produces a GPU stream on demand: a GPU stream is a resource owned by
+whoever is running the task, and is passed in from there.
+'''
 
 includes = [
   "<utility>",

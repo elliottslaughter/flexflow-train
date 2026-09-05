@@ -57,7 +57,8 @@ void op_task_body(void const *args,
                          }),
                 [](PerDeviceOpState *ptr) { return *ptr; }),
       /*optimizer_attrs=*/task_args.optimizer_attrs,
-      /*global_device_id=*/ctx.get_current_global_device_id());
+      /*global_device_id=*/ctx.get_current_global_device_id(),
+      /*stream=*/ctx.get_current_device_stream());
 }
 
 Realm::Event spawn_op_task(

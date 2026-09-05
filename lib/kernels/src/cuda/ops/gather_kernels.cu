@@ -131,8 +131,6 @@ void gpu_forward_kernel(ffStream_t stream,
                         GenericTensorAccessorR const &input,
                         GenericTensorAccessorR const &index,
                         GenericTensorAccessorW const &output) {
-  checkCUDA(get_legion_stream(&stream));
-
   std::optional<coord_t> stride = std::nullopt;
   if (m.dim.value == 0_n) {
     stride = 1;
@@ -168,8 +166,6 @@ void gpu_backward_kernel(ffStream_t stream,
                          GenericTensorAccessorR const &output_grad,
                          GenericTensorAccessorR const &index,
                          GenericTensorAccessorW const &input_grad) {
-  checkCUDA(get_legion_stream(&stream));
-
   std::optional<coord_t> stride = std::nullopt;
   if (m.dim.value == 0_n) {
     stride = 1;

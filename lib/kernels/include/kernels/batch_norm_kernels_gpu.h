@@ -10,7 +10,8 @@
 namespace FlexFlow {
 
 BatchNormPerDeviceState
-    batch_norm_gpu_init_kernel(Allocator &allocator,
+    batch_norm_gpu_init_kernel(ffStream_t stream,
+                               Allocator &allocator,
                                BatchNormAttrs const &attrs,
                                TensorShape const &input_shape,
                                TensorShape const &output_shape);
