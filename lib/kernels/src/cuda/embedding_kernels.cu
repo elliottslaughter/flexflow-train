@@ -26,24 +26,6 @@ __global__ void rand_generate_int(TD *ptr, size_t size, TD p) {
   }
 }
 
-void rand_generate_int64_wrapper(int64_t *ptr, size_t size, int64_t p) {
-  cudaStream_t stream;
-  checkCUDA(get_legion_stream(&stream));
-
-  // Randomly initialize the intput tensor to avoid out of index range issues
-  rand_generate_int<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
-      ptr, size, p);
-}
-
-void rand_generate_int32_wrapper(int32_t *ptr, size_t size, int32_t p) {
-  cudaStream_t stream;
-  checkCUDA(get_legion_stream(&stream));
-
-  // Randomly initialize the intput tensor to avoid out of index range issues
-  rand_generate_int<<<GET_BLOCKS(size), CUDA_NUM_THREADS, 0, stream>>>(
-      ptr, size, p);
-}
-
 template <typename TD>
 __global__ void embed_forward_no_aggr(int32_t const *input,
                                       TD *output,

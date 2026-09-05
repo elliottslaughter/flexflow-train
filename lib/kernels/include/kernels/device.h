@@ -26,10 +26,6 @@
 #include <iostream>
 #include <sstream>
 
-namespace FlexFlow {
-cudaError_t get_legion_stream(cudaStream_t *stream);
-} // namespace FlexFlow
-
 #if defined(FF_USE_CUDA) || defined(FF_USE_HIP_CUDA)
 typedef cudaStream_t ffStream_t;
 typedef cudnnTensorDescriptor_t ffTensorDescriptor_t;
@@ -55,7 +51,6 @@ typedef cudnnDataType_t ffCudnnDataType_t;
 typedef cudaError_t ffError_t;
 #elif defined(FF_USE_HIP_ROCM)
 typedef hipStream_t ffStream_t;
-hipError_t get_legion_stream(hipStream_t *stream);
 typedef miopenTensorDescriptor_t ffTensorDescriptor_t;
 typedef miopenActivationDescriptor_t ffActivationDescriptor_t;
 typedef miopenPoolingDescriptor_t ffPoolingDescriptor_t;

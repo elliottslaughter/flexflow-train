@@ -26,7 +26,8 @@ static positive_int get_num_channels(TensorShape const &shape) {
 }
 
 BatchNormPerDeviceState
-    batch_norm_gpu_init_kernel(Allocator &allocator,
+    batch_norm_gpu_init_kernel(ffStream_t stream,
+                               Allocator &allocator,
                                BatchNormAttrs const &attrs,
                                TensorShape const &input_shape,
                                TensorShape const &output_shape) {
@@ -104,10 +105,16 @@ BatchNormPerDeviceState
   std::fill(initial_running_stats.begin() + num_channels,
             initial_running_stats.end(),
             1.0f);
-  checkCUDA(cudaMemcpy(runningMean,
-                       initial_running_stats.data(),
-                       sizeof(float) * num_channels * 2,
-                       cudaMemcpyHostToDevice));
+  // On the task's stream, not the default one: Realm's task streams are
+  // non-blocking, so work on the default stream is not ordered against them.
+  // The synchronize is what keeps the host-side source alive until the copy
+  // has actually happened.
+  checkCUDA(cudaMemcpyAsync(runningMean,
+                            initial_running_stats.data(),
+                            sizeof(float) * num_channels * 2,
+                            cudaMemcpyHostToDevice,
+                            stream));
+  checkCUDA(cudaStreamSynchronize(stream));
 
   return BatchNormPerDeviceState{
       /*inputTensor=*/inputTensor,

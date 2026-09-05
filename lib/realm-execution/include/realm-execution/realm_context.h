@@ -3,6 +3,7 @@
 
 #include "kernels/allocation.h"
 #include "kernels/device_handle_t.dtg.h"
+#include "kernels/device_stream_t.dtg.h"
 #include "kernels/managed_per_device_ff_handle.h"
 #include "op-attrs/parallel_tensor_shape.dtg.h"
 #include "op-attrs/tensor_shape.dtg.h"
@@ -48,6 +49,21 @@ public:
   Realm::Processor get_current_processor() const;
   Allocator &get_current_device_allocator();
   global_device_id_t get_current_global_device_id() const;
+
+  /**
+   * \brief The stream that the currently running task's device work belongs
+   * on.
+   *
+   * Realm gives every task on a GPU processor a stream of its own and detects
+   * the task's device work through it, so this is the only stream a task may
+   * use. Creating one instead would leave work that Realm does not know to wait
+   * for, and destroying this one is not allowed either -- it belongs to Realm,
+   * not to the task.
+   *
+   * \warning Only meaningful inside a task. Returns the CPU stream when the
+   * current processor is not a GPU.
+   */
+  device_stream_t get_current_device_stream() const;
   ///\}
 
   /** \name Task creation */

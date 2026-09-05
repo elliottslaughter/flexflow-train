@@ -3,6 +3,7 @@
 
 #include "accessor.h"
 #include "kernels/cpu.h"
+#include "kernels/device_stream_t.dtg.h"
 #include "op-attrs/datatype_value.dtg.h"
 #include "op-attrs/initializer_attrs.dtg.h"
 
@@ -44,6 +45,7 @@ void initialize_tensor_cpu(GenericTensorAccessorW const &tensor,
  */
 void initialize_tensor(GenericTensorAccessorW const &tensor,
                        InitializerAttrs const &attrs,
+                       device_stream_t const &stream,
                        size_t salt = 0);
 
 void zero_init_kernel(TaskLocation const &, GenericTensorAccessorW const &);

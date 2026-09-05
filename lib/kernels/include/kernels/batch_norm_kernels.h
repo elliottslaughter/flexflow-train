@@ -13,7 +13,7 @@
 namespace FlexFlow {
 
 std::optional<BatchNormPerDeviceState>
-    batch_norm_init_kernel(DeviceType device_type,
+    batch_norm_init_kernel(device_stream_t const &stream,
                            Allocator &allocator,
                            BatchNormAttrs const &attrs,
                            TensorShape const &input_shape,
