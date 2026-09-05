@@ -268,9 +268,7 @@ void conv_2d_gpu_backward_kernel(
 
   checkCUDNN(cudnnSetStream(handle.dnn, stream));
 
-  // NOTE: alpha is used for beta as well so that the gradients are accumulated
-  // into rather than overwritten
-  float alpha = 1.0f;
+  float alpha = 1.0f, beta = 0.0f;
 
   checkCUDNN(cudnnConvolutionBackwardFilter(
       handle.dnn,
@@ -284,7 +282,7 @@ void conv_2d_gpu_backward_kernel(
       get_device_scratch_for_stream(stream,
                                     per_device_state.bwdFilterWorkspaceSize),
       per_device_state.bwdFilterWorkspaceSize,
-      &alpha,
+      &beta,
       per_device_state.filterDesc,
       filter_grad.ptr));
 
@@ -293,7 +291,7 @@ void conv_2d_gpu_backward_kernel(
                                             &alpha,
                                             per_device_state.outputTensor,
                                             output_grad.ptr,
-                                            &alpha,
+                                            &beta,
                                             per_device_state.biasTensor,
                                             bias_grad.value().ptr));
   }
@@ -310,7 +308,7 @@ void conv_2d_gpu_backward_kernel(
       get_device_scratch_for_stream(stream,
                                     per_device_state.bwdDataWorkspaceSize),
       per_device_state.bwdDataWorkspaceSize,
-      &alpha,
+      &beta,
       per_device_state.inputTensor,
       input_grad.ptr));
 }

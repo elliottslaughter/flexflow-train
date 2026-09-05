@@ -116,8 +116,7 @@ void pool_2d_gpu_backward_kernel(cudaStream_t stream,
                                  GenericTensorAccessorW const &input_grad) {
   checkCUDNN(cudnnSetStream(handle.dnn, stream));
 
-  // NOTE: beta is 1.0 so that input_grad is accumulated into
-  float alpha = 1.0f, beta = 1.0f;
+  float alpha = 1.0f, beta = 0.0f;
   checkCUDNN(cudnnPoolingBackward(handle.dnn,
                                   per_device_state.poolDesc,
                                   &alpha,

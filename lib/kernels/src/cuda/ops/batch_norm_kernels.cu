@@ -182,8 +182,8 @@ void batch_norm_gpu_backward_kernel(
 
   // NOTE: the beta coefficients are 1.0 so that the gradients are accumulated
   // into rather than overwritten
-  float alpha_data = 1.0f, beta_data = 1.0f;
-  float alpha_param = 1.0f, beta_param = 1.0f;
+  float alpha_data = 1.0f, beta_data = 0.0f;
+  float alpha_param = 1.0f, beta_param = 0.0f;
   checkCUDNN(cudnnBatchNormalizationBackward(handle.dnn,
                                              per_device_state.mode,
                                              &alpha_data,

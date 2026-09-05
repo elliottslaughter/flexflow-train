@@ -39,15 +39,13 @@ void gpu_backward_kernel(cudaStream_t stream,
                          float const *output_grad_ptr,
                          float *input_grad_ptr) {
 
-  float alpha = 1.0f;
-  apply_add_with_scale<float>
+  copy_kernel<float>
       <<<GET_BLOCKS(get_num_elements(input.shape.dims).int_from_positive_int()),
          CUDA_NUM_THREADS,
          0,
          stream>>>(input_grad_ptr,
                    output_grad_ptr,
-                   get_num_elements(input.shape.dims).int_from_positive_int(),
-                   alpha);
+                   get_num_elements(input.shape.dims).int_from_positive_int());
 }
 
 } // namespace Flat

@@ -40,7 +40,7 @@ __global__ void reshape_accumulate_kernel(T *input_grad,
                                           T const *output_grad,
                                           size_t num_elements) {
   CUDA_KERNEL_LOOP(i, num_elements) {
-    input_grad[i] += output_grad[i];
+    input_grad[i] = output_grad[i];
   }
 }
 

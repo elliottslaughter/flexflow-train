@@ -87,14 +87,14 @@ void split_gpu_backward_kernel(
            attrs.splits.at(i));
     int output_blk_size = get_blk_size(output_grad.shape, attrs.axis);
 
-    add_with_stride<<<GET_BLOCKS(output_blk_size * num_blks),
-                      CUDA_NUM_THREADS,
-                      0,
-                      stream>>>(input_grad.get_float_ptr() + offset,
-                                output_grad.get_float_ptr(),
-                                num_blks,
-                                input_blk_size,
-                                output_blk_size);
+    copy_with_stride<<<GET_BLOCKS(output_blk_size * num_blks),
+                       CUDA_NUM_THREADS,
+                       0,
+                       stream>>>(input_grad.get_float_ptr() + offset,
+                                 output_grad.get_float_ptr(),
+                                 num_blks,
+                                 input_blk_size,
+                                 output_blk_size);
 
     offset += output_blk_size;
   }

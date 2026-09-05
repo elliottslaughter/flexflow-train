@@ -291,7 +291,7 @@ void gpu_backward_kernel(cudaStream_t stream,
   checkCUDNN(cudnnMultiHeadAttnBackwardWeights(
       device_state.handle.dnn,
       device_state.attnDesc,
-      CUDNN_WGRAD_MODE_ADD,
+      CUDNN_WGRAD_MODE_SET,
       device_state.qDesc,
       query_ptr,
       device_state.kDesc,

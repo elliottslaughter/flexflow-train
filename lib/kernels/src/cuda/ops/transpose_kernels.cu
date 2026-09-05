@@ -129,7 +129,7 @@ void transpose_gpu_backward_kernel(cudaStream_t stream,
       input_grad.get_float_ptr(),
       make_strides(
           inverse_permutation, output_grad.shape.dims, input_grad.shape.dims),
-      /*beta=*/1.0f);
+      /*beta=*/0.0f);
 }
 
 } // namespace FlexFlow

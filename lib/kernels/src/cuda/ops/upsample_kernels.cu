@@ -102,7 +102,7 @@ __global__ void upsample_nearest_backward_kernel(size_t num_input_elements,
       }
     }
 
-    input_grad[input_idx] += sum;
+    input_grad[input_idx] = sum;
   }
 }
 

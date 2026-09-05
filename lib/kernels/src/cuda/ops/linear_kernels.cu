@@ -219,7 +219,7 @@ void gpu_backward_kernel(cudaStream_t stream,
                          int batch_size) {
   checkCUBLAS(cublasSetStream(m.handle.blas, stream));
   checkCUDNN(cudnnSetStream(m.handle.dnn, stream));
-  float alpha = 1.0f;
+  float alpha = 1.0f, beta = 0.0f;
   cudaDataType_t input_type = ff_to_cuda_datatype(m.input_type);
   cudaDataType_t weight_type = ff_to_cuda_datatype(m.weight_type);
   cudaDataType_t output_type = ff_to_cuda_datatype(m.output_type);
@@ -250,7 +250,6 @@ void gpu_backward_kernel(cudaStream_t stream,
   }
 
   // Compute weight gradiant
-  // NOTE: we use alpha=1 for kernel_grad to accumulate gradients
   checkCUBLAS(cublasGemmEx(m.handle.blas,
                            CUBLAS_OP_N,
                            CUBLAS_OP_T,
@@ -264,7 +263,7 @@ void gpu_backward_kernel(cudaStream_t stream,
                            static_cast<void *>(output_grad_ptr),
                            output_type,
                            out_dim,
-                           &alpha,
+                           &beta,
                            static_cast<void *>(kernel_grad_ptr),
                            weight_type,
                            in_dim,
@@ -297,7 +296,6 @@ void gpu_backward_kernel(cudaStream_t stream,
   }
 
   // Compute bias gradiant
-  // NOTE: we use alpha=1 for bias_grad to accumulate gradients
   // use_bias = True
   if (bias_grad_ptr != NULL) {
     checkCUBLAS(cublasGemmEx(m.handle.blas,
@@ -313,7 +311,7 @@ void gpu_backward_kernel(cudaStream_t stream,
                              static_cast<void *>(output_grad_ptr),
                              output_type,
                              out_dim,
-                             &alpha,
+                             &beta,
                              static_cast<void *>(bias_grad_ptr),
                              weight_type,
                              1,
@@ -321,7 +319,6 @@ void gpu_backward_kernel(cudaStream_t stream,
                              CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   }
   // Compute data gradiant
-  // NOTE: we use alpha=1 for input_grad to accumulate gradients
   if (input_grad_ptr != NULL) {
     checkCUBLAS(cublasGemmEx(m.handle.blas,
                              CUBLAS_OP_N,
@@ -336,7 +333,7 @@ void gpu_backward_kernel(cudaStream_t stream,
                              static_cast<void *>(output_grad_ptr),
                              output_type,
                              out_dim,
-                             &alpha,
+                             &beta,
                              static_cast<void *>(input_grad_ptr),
                              input_type,
                              in_dim,

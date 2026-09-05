@@ -77,7 +77,7 @@ void gpu_backward_kernel(cudaStream_t stream,
                          float const *output_grad_ptr,
                          float *input_grad_ptr) {
   checkCUDNN(cudnnSetStream(m.handle.dnn, stream));
-  float alpha = 1.0, beta = 1.0f;
+  float alpha = 1.0, beta = 0.0f;
   switch (m.op_type) {
     case OperatorType::REDUCE_SUM:
       alpha = 1.0f;
