@@ -14,6 +14,7 @@
  */
 
 #include "internal/device.h"
+#include "kernels/device_scratch.h"
 #include "kernels/element_binary_kernels_gpu.h"
 #include "kernels/ff_handle.h"
 #include "op-attrs/datatype.h"
@@ -262,18 +263,19 @@ void element_binary_gpu_backward_kernel(
     float alpha = 1.0f, beta = 1.0f;
     if (lhs_grad.get_float_ptr() != nullptr) {
       if (attrs.should_broadcast_lhs) {
-        checkCUDNN(cudnnReduceTensor(handle.dnn,
-                                     per_device_state.reduceAddDesc,
-                                     nullptr /*indices*/,
-                                     0 /*indicesSizeInBytes*/,
-                                     handle.workSpace,
-                                     handle.workSpaceSize,
-                                     &alpha,
-                                     per_device_state.outputTensor,
-                                     output_grad.get_float_ptr(),
-                                     &beta,
-                                     per_device_state.inputLHSTensor,
-                                     lhs_grad.get_float_ptr()));
+        checkCUDNN(cudnnReduceTensor(
+            handle.dnn,
+            per_device_state.reduceAddDesc,
+            nullptr /*indices*/,
+            0 /*indicesSizeInBytes*/,
+            get_device_scratch_for_stream(stream, handle.workSpaceSize),
+            handle.workSpaceSize,
+            &alpha,
+            per_device_state.outputTensor,
+            output_grad.get_float_ptr(),
+            &beta,
+            per_device_state.inputLHSTensor,
+            lhs_grad.get_float_ptr()));
       } else {
         checkCUDNN(cudnnAddTensor(handle.dnn,
                                   &alpha,
@@ -289,18 +291,19 @@ void element_binary_gpu_backward_kernel(
     }
     if (rhs_grad.get_float_ptr() != nullptr) {
       if (attrs.should_broadcast_rhs) {
-        checkCUDNN(cudnnReduceTensor(handle.dnn,
-                                     per_device_state.reduceAddDesc,
-                                     nullptr /*indices*/,
-                                     0 /*indicesSizeInBytes*/,
-                                     handle.workSpace,
-                                     handle.workSpaceSize,
-                                     &alpha,
-                                     per_device_state.outputTensor,
-                                     output_grad.get_float_ptr(),
-                                     &beta,
-                                     per_device_state.inputRHSTensor,
-                                     rhs_grad.get_float_ptr()));
+        checkCUDNN(cudnnReduceTensor(
+            handle.dnn,
+            per_device_state.reduceAddDesc,
+            nullptr /*indices*/,
+            0 /*indicesSizeInBytes*/,
+            get_device_scratch_for_stream(stream, handle.workSpaceSize),
+            handle.workSpaceSize,
+            &alpha,
+            per_device_state.outputTensor,
+            output_grad.get_float_ptr(),
+            &beta,
+            per_device_state.inputRHSTensor,
+            rhs_grad.get_float_ptr()));
       } else {
         checkCUDNN(cudnnAddTensor(handle.dnn,
                                   &alpha,
@@ -315,28 +318,30 @@ void element_binary_gpu_backward_kernel(
     float alpha1 = 1.0f, alpha2 = 1.0f, beta = 1.0f, zero = 0.0f;
     if (lhs_grad.get_float_ptr() != nullptr) {
       if (attrs.should_broadcast_lhs) {
-        checkCUDNN(cudnnOpTensor(handle.dnn,
-                                 per_device_state.opDesc,
-                                 &alpha1,
-                                 per_device_state.outputTensor,
-                                 output_grad.get_float_ptr(),
-                                 &alpha2,
-                                 per_device_state.inputRHSTensor,
-                                 rhs.get_float_ptr(),
-                                 &zero,
-                                 per_device_state.outputTensor,
-                                 handle.workSpace));
+        checkCUDNN(cudnnOpTensor(
+            handle.dnn,
+            per_device_state.opDesc,
+            &alpha1,
+            per_device_state.outputTensor,
+            output_grad.get_float_ptr(),
+            &alpha2,
+            per_device_state.inputRHSTensor,
+            rhs.get_float_ptr(),
+            &zero,
+            per_device_state.outputTensor,
+            get_device_scratch_for_stream(stream, handle.workSpaceSize)));
         checkCUDNN(cudnnReduceTensor(
             handle.dnn,
             per_device_state.reduceAddDesc,
             nullptr /*indices*/,
             0 /*indicesSizeInBytes*/,
-            (void *)((char *)handle.workSpace +
+            (void *)((char *)get_device_scratch_for_stream(
+                         stream, handle.workSpaceSize) +
                      sizeof(*output_grad.get_float_ptr())),
             handle.workSpaceSize - sizeof(*output_grad.get_float_ptr()),
             &alpha1,
             per_device_state.outputTensor,
-            handle.workSpace,
+            get_device_scratch_for_stream(stream, handle.workSpaceSize),
             &beta,
             per_device_state.inputLHSTensor,
             lhs_grad.get_float_ptr()));
@@ -356,28 +361,30 @@ void element_binary_gpu_backward_kernel(
     }
     if (rhs_grad.get_float_ptr() != nullptr) {
       if (attrs.should_broadcast_rhs) {
-        checkCUDNN(cudnnOpTensor(handle.dnn,
-                                 per_device_state.opDesc,
-                                 &alpha1,
-                                 per_device_state.outputTensor,
-                                 output_grad.get_float_ptr(),
-                                 &alpha2,
-                                 per_device_state.inputLHSTensor,
-                                 lhs.get_float_ptr(),
-                                 &zero,
-                                 per_device_state.outputTensor,
-                                 handle.workSpace));
+        checkCUDNN(cudnnOpTensor(
+            handle.dnn,
+            per_device_state.opDesc,
+            &alpha1,
+            per_device_state.outputTensor,
+            output_grad.get_float_ptr(),
+            &alpha2,
+            per_device_state.inputLHSTensor,
+            lhs.get_float_ptr(),
+            &zero,
+            per_device_state.outputTensor,
+            get_device_scratch_for_stream(stream, handle.workSpaceSize)));
         checkCUDNN(cudnnReduceTensor(
             handle.dnn,
             per_device_state.reduceAddDesc,
             nullptr /*indices*/,
             0 /*indicesSizeInBytes*/,
-            (void *)((char *)handle.workSpace +
+            (void *)((char *)get_device_scratch_for_stream(
+                         stream, handle.workSpaceSize) +
                      sizeof(*output_grad.get_float_ptr())),
             handle.workSpaceSize - sizeof(*output_grad.get_float_ptr()),
             &alpha1,
             per_device_state.outputTensor,
-            handle.workSpace,
+            get_device_scratch_for_stream(stream, handle.workSpaceSize),
             &beta,
             per_device_state.inputRHSTensor,
             rhs_grad.get_float_ptr()));
