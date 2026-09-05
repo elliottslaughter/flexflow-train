@@ -1,4 +1,5 @@
 #include "local-execution/task_execution.h"
+#include "kernels/gradient_reduction_kernels.h"
 #include "local-execution/local_task_argument_accessor.h"
 #include "local-execution/local_task_registry.h"
 #include "op-attrs/computation_graph_op_attrs.h"
@@ -9,7 +10,11 @@
 #include "task-spec/dynamic_graph/training_operation_attrs.dtg.h"
 #include "task-spec/task_argument_accessor/task_tensor_parameter.h"
 #include "utils/containers/binary_merge_disjoint_maps.h"
+#include "utils/containers/get_only.h"
 #include "utils/containers/map_keys_and_values.h"
+#include "utils/containers/transform.h"
+#include "utils/containers/values.h"
+#include "utils/containers/vector_of.h"
 #include "utils/exception.h"
 #include "utils/optional.h"
 #include "utils/overload.h"
@@ -102,6 +107,31 @@ std::optional<milliseconds_t> execute_dynamic_node_invocation(
           /*optimizer_attrs=*/optimizer_attrs,
           /*device_idx=*/device_idx,
           /*stream=*/stream);
+
+  // A gradient reduction sums the subgradients of a value that was read more
+  // than once. Its inputs are keyed by whichever slot each consumer used, so
+  // there is no fixed set of slot names to ask a TaskArgumentAccessor for, and
+  // it takes them off the invocation directly.
+  if (assert_unwrap(invocation.node_attrs.op_attrs)
+          .has<GradientReductionAttrs>()) {
+    auto as_read = [](DynamicValueAttrs const &value) {
+      DynamicTensorAccessor const &accessor = assert_unwrap(value.accessor);
+      // Which of the two an invocation's values carry depends on the
+      // permissions they were resolved under, and a subgradient is only read
+      // here either way.
+      return accessor.has<GenericTensorAccessorR>()
+                 ? accessor.require_read()
+                 : read_only_accessor_from_write_accessor(
+                       accessor.require_write());
+    };
+    std::vector<GenericTensorAccessorR> subgradients =
+        transform(vector_of(values(invocation.inputs)), as_read);
+    GenericTensorAccessorW summed =
+        assert_unwrap(get_only(invocation.outputs).second.accessor)
+            .require_write();
+    gradient_reduction_kernel(stream, subgradients, summed);
+    return std::nullopt;
+  }
 
   DynamicTaskType task_type = assert_unwrap(invocation.node_attrs.task_type);
   std::optional<milliseconds_t> result;

@@ -295,6 +295,9 @@ name = "ZERO_GRADIENTS_REGISTER_TASK_ID"
 name = "ZERO_GRADIENTS_TASK_ID"
 
 [[values]]
+name = "GRADIENT_REDUCTION_TASK_ID"
+
+[[values]]
 name = "NCCL_GETUNIQUEID_TASK_ID"
 
 [[values]]

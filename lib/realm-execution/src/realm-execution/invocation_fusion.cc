@@ -48,7 +48,7 @@ static std::optional<global_device_id_t> get_fusable_device_for_invocation(
               },
               [](LossAttrs const &) { return true; },
               [](CopyAttrs const &) { return false; },
-              [](GradientReductionAttrs const &) { return false; },
+              [](GradientReductionAttrs const &) { return true; },
           });
 
   if (!becomes_op_task) {

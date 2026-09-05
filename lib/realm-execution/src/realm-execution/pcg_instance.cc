@@ -1,4 +1,5 @@
 #include "realm-execution/pcg_instance.h"
+#include "op-attrs/parallel_tensor_shape.h"
 #include "op-attrs/tensor_slot_name.dtg.h"
 #include "pcg/optimizer_attrs.h"
 #include "realm-execution/dependency_set.h"
@@ -45,6 +46,7 @@
 #include "utils/graph/digraph/algorithms/get_topological_ordering.h"
 #include "utils/optional.h"
 #include <cstdlib>
+#include <iostream>
 #include <vector>
 
 namespace FlexFlow {
@@ -258,6 +260,39 @@ PCGInstance create_pcg_instance(
         /*precondition=*/ctx.get_outstanding_events());
   }
   ctx.get_outstanding_events().wait();
+
+  // TMP EXPERIMENT: structure of the gradient reduction nodes.
+  if (std::getenv("FF_DUMP_REDUCTIONS") != nullptr) {
+    std::map<int, int> fanin;
+    size_t in_bytes = 0, out_bytes = 0;
+    int nodes = 0;
+    for (DynamicNodeInvocation const &invocation : dg.invocations) {
+      if (!assert_unwrap(invocation.node_attrs.op_attrs)
+               .has<GradientReductionAttrs>()) {
+        continue;
+      }
+      nodes += 1;
+      fanin[invocation.inputs.size()] += 1;
+      for (auto const &[slot, value] : invocation.inputs) {
+        in_bytes += size_t{
+            get_piece_size_in_bytes(assert_unwrap(value.parallel_tensor_shape))
+                .unwrap_num_bytes()
+                .unwrap_nonnegative()};
+      }
+      for (auto const &[slot, value] : invocation.outputs) {
+        out_bytes += size_t{
+            get_piece_size_in_bytes(assert_unwrap(value.parallel_tensor_shape))
+                .unwrap_num_bytes()
+                .unwrap_nonnegative()};
+      }
+    }
+    std::cout << "gradient reduction nodes: " << nodes << std::endl;
+    for (auto const &[n, count] : fanin) {
+      std::cout << "  fan-in " << n << ": " << count << " nodes" << std::endl;
+    }
+    std::cout << "  input bytes " << (in_bytes / 1048576) << " MiB, output "
+              << (out_bytes / 1048576) << " MiB" << std::endl;
+  }
 
   // Which gradients have to be cleared before a backward pass, and which are
   // simply written by whatever produces them. See bwd_task_overwrites_grads.
@@ -524,7 +559,10 @@ static Realm::Event
       },
       [&](LossAttrs const &) { return spawn_task(); },
       [&](CopyAttrs const &) { return issue_copy(); },
-      [&](GradientReductionAttrs const &) { return issue_reduction(); },
+      // A gradient reduction is a task like any other, so that it can be
+      // fused with the backward tasks around it. See
+      // group_invocations_for_fusion.
+      [&](GradientReductionAttrs const &) { return spawn_task(); },
   });
 }
 
