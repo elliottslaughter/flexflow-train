@@ -35,6 +35,14 @@ std::optional<milliseconds_t>
                       device_stream_t const &stream,
                       Ts &&...ts) {
   if (settings.measure_iters <= 0) {
+    // Not measuring. Run the kernel and leave it at that -- note that this
+    // still has to *run* it, which is why the check cannot simply return.
+    //
+    // Measuring is not free: it synchronizes on a CUDA event after every
+    // kernel, which stops the host from queueing the next one and leaves the
+    // device idle in between. It is worth doing when the per-kernel timings
+    // are actually wanted, and worth avoiding otherwise.
+    f(stream, std::forward<Ts>(ts)...);
     return std::nullopt;
   }
 

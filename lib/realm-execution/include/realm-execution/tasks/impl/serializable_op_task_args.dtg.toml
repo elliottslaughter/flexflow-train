@@ -12,12 +12,19 @@ includes = [
   "kernels/profiling_settings.dtg.h",
   "pcg/optimizer_attrs.dtg.h",
   "realm-execution/tasks/serializer/serializable_device_specific_ptr.dtg.h",
-  "realm-execution/tasks/serializer/serializable_tensor_instance_backing.dtg.h",
+  "realm-execution/tasks/serializer/serializable_realm_event.dtg.h",
+  "realm-execution/tasks/serializer/serializable_realm_instance.dtg.h",
+  "task-spec/dynamic_graph/dynamic_tensor_slot.dtg.h",
   "task-spec/dynamic_graph/serializable_dynamic_node_invocation.dtg.h",
+  "<map>",
+  "<utility>",
 ]
 
 src_includes = [
+  "utils/fmt/map.h",
   "utils/fmt/optional.h",
+  "utils/fmt/pair.h",
+  "utils/hash/map.h",
   "utils/json/optional.h",
 ]
 
@@ -25,9 +32,18 @@ src_includes = [
 name = "invocation"
 type = "::FlexFlow::SerializableDynamicNodeInvocation"
 
+# Keyed by slot rather than by the whole DynamicValueAttrs the instance belongs
+# to. The values are already on the wire once, inside `invocation`; keying by
+# them repeated every one of them a second time, which was over a third of the
+# bytes in a task launch and a corresponding share of the time spent encoding
+# and decoding them.
 [[fields]]
-name = "tensor_backing"
-type = "::FlexFlow::SerializableTensorInstanceBacking"
+name = "input_instances"
+type = "std::map<::FlexFlow::DynamicTensorSlot, std::pair<::FlexFlow::SerializableRealmInstance, ::FlexFlow::SerializableRealmEvent>>"
+
+[[fields]]
+name = "output_instances"
+type = "std::map<::FlexFlow::DynamicTensorSlot, std::pair<::FlexFlow::SerializableRealmInstance, ::FlexFlow::SerializableRealmEvent>>"
 
 [[fields]]
 name = "device_state"

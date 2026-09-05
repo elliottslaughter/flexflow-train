@@ -534,7 +534,7 @@ int main(int argc, char **argv) {
             /*optimizer=*/optimizer_attrs,
             /*loss=*/loss,
             /*input_tensors=*/input_tensors,
-            /*profiling_settings=*/ProfilingSettings{0, 1},
+            /*profiling_settings=*/ProfilingSettings{0, 0},
             /*device_handle=*/device_handle,
             /*device_type=*/has_gpus ? DeviceType::GPU : DeviceType::CPU);
 
@@ -543,10 +543,10 @@ int main(int argc, char **argv) {
 
         if (get_env_flag("FF_LIST_TASKS")) {
           std::map<std::string, int> counts;
-          for (DynamicNodeInvocation const &invocation :
+          for (PreparedInvocation const &prepared :
                pcg_instance.get_execution_order()) {
             counts[fmt::to_string(
-                assert_unwrap(invocation.node_attrs.task_type))] += 1;
+                assert_unwrap(prepared.invocation.node_attrs.task_type))] += 1;
           }
           for (auto const &[task_type, count] : counts) {
             std::cout << task_type << " " << count << std::endl;
@@ -643,12 +643,12 @@ int main(int argc, char **argv) {
           if (forward_only) {
             perform_forward_pass_for_pcg_instance(
                 /*instance=*/pcg_instance,
-                /*profiling_settings=*/ProfilingSettings{0, 1},
+                /*profiling_settings=*/ProfilingSettings{0, 0},
                 /*device_handle=*/device_handle);
           } else {
             perform_all_passes_for_pcg_instance(
                 /*instance=*/pcg_instance,
-                /*profiling_settings=*/ProfilingSettings{0, 1},
+                /*profiling_settings=*/ProfilingSettings{0, 0},
                 /*device_handle=*/device_handle);
           }
 

@@ -9,6 +9,7 @@
 #include "realm-execution/realm.h"
 #include "realm-execution/realm_context.h"
 #include "realm-execution/tensor_instance_backing.dtg.h"
+#include "task-spec/dynamic_graph/dynamic_invocation_id_t.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_node_invocation.dtg.h"
 #include "task-spec/per_device_op_state.dtg.h"
 #include <optional>
@@ -51,16 +52,13 @@ void op_task_body(void const *, size_t, void const *, size_t, Realm::Processor);
  * To understand how this fits into the broader structure of \ref
  * realm-execution, see \ref realm-execution-tasks.
  */
-Realm::Event spawn_op_task(
-    RealmContext &ctx,
-    Realm::Processor target_proc,
-    DynamicNodeInvocation const &invocation,
-    TensorInstanceBacking const &tensor_backing,
-    std::optional<DeviceSpecificPtr<PerDeviceOpState>> const &device_state,
-    ProfilingSettings const &profiling_settings,
-    DeviceSpecificPtr<ManagedPerDeviceFFHandle> const &device_handle,
-    std::optional<OptimizerAttrs> const &optimizer_attrs,
-    Realm::Event precondition);
+Realm::Event spawn_op_task(RealmContext &ctx,
+                           Realm::Processor target_proc,
+                           DynamicNodeInvocation const &invocation,
+                           dynamic_invocation_id_t const &invocation_id,
+                           ProfilingSettings const &profiling_settings,
+                           std::optional<OptimizerAttrs> const &optimizer_attrs,
+                           Realm::Event precondition);
 
 } // namespace FlexFlow
 

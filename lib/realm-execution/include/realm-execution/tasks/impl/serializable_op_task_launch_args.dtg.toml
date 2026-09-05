@@ -1,0 +1,40 @@
+namespace = "FlexFlow"
+name = "SerializableOpTaskLaunchArgs"
+type = "struct"
+features = [
+  "eq",
+  "fmt",
+  "hash",
+  "json",
+]
+docstring = '''
+\brief What a task launch carries once the rest of its arguments have been
+registered on the node that will run it.
+
+Everything else a task needs is a property of the graph and was sent once
+during initialization; see \ref register_op_task_args.
+'''
+
+includes = [
+  "kernels/profiling_settings.dtg.h",
+  "pcg/optimizer_attrs.dtg.h",
+  "task-spec/dynamic_graph/dynamic_invocation_id_t.dtg.h",
+  "<optional>",
+]
+
+src_includes = [
+  "utils/fmt/optional.h",
+  "utils/json/optional.h",
+]
+
+[[fields]]
+name = "invocation_id"
+type = "::FlexFlow::dynamic_invocation_id_t"
+
+[[fields]]
+name = "profiling_settings"
+type = "::FlexFlow::ProfilingSettings"
+
+[[fields]]
+name = "optimizer_attrs"
+type = "std::optional<::FlexFlow::OptimizerAttrs>"

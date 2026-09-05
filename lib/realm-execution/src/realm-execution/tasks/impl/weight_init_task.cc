@@ -52,7 +52,7 @@ Realm::Event spawn_weight_init_task(RealmContext &ctx,
       salt,
   };
 
-  std::string serialized_args =
+  auto serialized_args =
       serialize_task_args(weight_init_task_args_to_serializable(task_args));
 
   return ctx.spawn_task(target_proc,

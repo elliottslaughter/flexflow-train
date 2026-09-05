@@ -111,7 +111,7 @@ std::optional<Realm::Event> spawn_per_device_op_state_init_task(
                         }),
                get_init_task_id_for_op_attrs);
   if (task_id.has_value()) {
-    std::string args = serialize_task_args(
+    auto args = serialize_task_args(
         per_device_op_state_init_task_args_to_serializable(task_args));
     return ctx.spawn_task(target_proc,
                           assert_unwrap(task_id),
