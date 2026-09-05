@@ -57,7 +57,7 @@ bool bwd_task_overwrites_grads(
       },
       [](LossAttrs const &) -> bool { return true; },
       [](CopyAttrs const &) -> bool { return true; },
-      [](GradientReductionAttrs const &) -> bool { return false; },
+      [](GradientReductionAttrs const &) -> bool { return true; },
   });
 }
 
