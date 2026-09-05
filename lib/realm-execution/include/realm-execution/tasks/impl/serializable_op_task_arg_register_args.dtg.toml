@@ -1,0 +1,22 @@
+namespace = "FlexFlow"
+name = "SerializableOpTaskArgRegisterArgs"
+type = "struct"
+features = [
+  "eq",
+  "fmt",
+  "hash",
+  "json",
+]
+
+includes = [
+  "realm-execution/tasks/impl/serializable_op_task_args.dtg.h",
+  "task-spec/dynamic_graph/dynamic_invocation_id_t.dtg.h",
+]
+
+[[fields]]
+name = "invocation_id"
+type = "::FlexFlow::dynamic_invocation_id_t"
+
+[[fields]]
+name = "args"
+type = "::FlexFlow::SerializableOpTaskArgs"

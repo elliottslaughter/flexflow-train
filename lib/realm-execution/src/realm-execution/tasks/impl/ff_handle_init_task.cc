@@ -66,7 +66,7 @@ Realm::Event spawn_ff_handle_init_task(
       result_ptr,
   };
 
-  std::string serialized_args =
+  auto serialized_args =
       serialize_task_args(ff_handle_init_task_args_to_serializable(task_args));
   return ctx.spawn_task(target_proc,
                         task_id_t::DEVICE_HANDLE_INIT_TASK_ID,
