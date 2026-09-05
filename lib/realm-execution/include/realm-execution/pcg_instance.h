@@ -6,6 +6,7 @@
 #include "pcg/mapped_parallel_computation_graph/mapped_parallel_computation_graph.dtg.h"
 #include "pcg/optimizer_attrs.dtg.h"
 #include "realm-execution/distributed_ff_handle.h"
+#include "realm-execution/invocation_fusion.h"
 #include "realm-execution/parallel_loss_config.dtg.h"
 #include "realm-execution/per_device_op_state_backing.dtg.h"
 #include "realm-execution/prepared_invocation.h"
@@ -42,7 +43,7 @@ public:
   PCGInstance(PCGInstance &&) = delete;
 
   explicit PCGInstance(RealmContext &ctx,
-                       std::vector<PreparedInvocation> const &execution_order,
+                       std::vector<InvocationGroup> const &execution_order,
                        TensorInstanceBacking const &tensor_instance_backing,
                        PerDeviceOpStateBacking const &device_state_backing,
                        OptimizerAttrs const &optimizer_attrs,
@@ -55,7 +56,13 @@ public:
   /** \name Getters **/
   ///\{
   RealmContext &get_realm_context();
-  std::vector<PreparedInvocation> const &get_execution_order() const;
+  /**
+   * \brief The invocations to issue, in topological order, grouped into the
+   * Realm operations they are issued as.
+   *
+   * \see group_invocations_for_fusion
+   */
+  std::vector<InvocationGroup> const &get_execution_order() const;
   TensorInstanceBacking const &get_tensor_instance_backing() const;
   PerDeviceOpStateBacking const &get_device_state_backing() const;
   OptimizerAttrs const &get_optimizer_attrs() const;
@@ -64,7 +71,7 @@ public:
 
 private:
   RealmContext &ctx;
-  std::vector<PreparedInvocation> execution_order;
+  std::vector<InvocationGroup> execution_order;
   TensorInstanceBacking tensor_instance_backing;
   PerDeviceOpStateBacking device_state_backing;
   OptimizerAttrs optimizer_attrs;

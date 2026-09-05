@@ -3,6 +3,7 @@
 
 #include "realm-execution/tasks/impl/op_task_args.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_invocation_id_t.dtg.h"
+#include <vector>
 
 namespace FlexFlow {
 
@@ -25,6 +26,24 @@ void register_op_task_args(dynamic_invocation_id_t const &invocation_id,
 
 OpTaskArgs const &
     get_registered_op_task_args(dynamic_invocation_id_t const &invocation_id);
+
+/**
+ * @brief Record which invocations a fused task is to run, and in what order.
+ *
+ * The members' own arguments are already in the table above, so a group is
+ * just the list of them, resolved here once rather than looked up again on
+ * every launch.
+ *
+ * \warning Every member must already have been registered.
+ *
+ * \see group_invocations_for_fusion
+ */
+void register_op_task_group(
+    dynamic_invocation_id_t const &group_id,
+    std::vector<dynamic_invocation_id_t> const &member_ids);
+
+std::vector<OpTaskArgs const *> const &
+    get_registered_op_task_group(dynamic_invocation_id_t const &group_id);
 
 } // namespace FlexFlow
 

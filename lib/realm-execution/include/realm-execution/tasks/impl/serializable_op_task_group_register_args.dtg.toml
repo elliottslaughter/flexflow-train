@@ -1,0 +1,34 @@
+namespace = "FlexFlow"
+name = "SerializableOpTaskGroupRegisterArgs"
+type = "struct"
+features = [
+  "eq",
+  "fmt",
+  "hash",
+  "json",
+]
+docstring = '''
+\brief What names a fused group to the node that will run it.
+
+The members' own arguments were registered separately (see \ref
+SerializableOpTaskArgRegisterArgs), so all that is left to say is which of them
+this group runs, and in what order.
+'''
+
+includes = [
+  "task-spec/dynamic_graph/dynamic_invocation_id_t.dtg.h",
+  "<vector>",
+]
+
+src_includes = [
+  "utils/fmt/vector.h",
+  "utils/hash/vector.h",
+]
+
+[[fields]]
+name = "group_id"
+type = "::FlexFlow::dynamic_invocation_id_t"
+
+[[fields]]
+name = "member_ids"
+type = "std::vector<::FlexFlow::dynamic_invocation_id_t>"

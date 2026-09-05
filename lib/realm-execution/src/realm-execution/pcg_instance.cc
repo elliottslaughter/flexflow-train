@@ -4,12 +4,15 @@
 #include "realm-execution/dependency_set.h"
 #include "realm-execution/distributed_per_device_op_state_initialization.h"
 #include "realm-execution/instance_allocation.h"
+#include "realm-execution/invocation_fusion.h"
 #include "realm-execution/prepared_invocation.h"
 #include "realm-execution/realm_context.h"
 #include "realm-execution/redops/redop_id_t.h"
+#include "realm-execution/tasks/impl/fused_op_task.h"
 #include "realm-execution/tasks/impl/op_task.h"
 #include "realm-execution/tasks/impl/op_task_arg_register_task.h"
 #include "realm-execution/tasks/impl/op_task_args.dtg.h"
+#include "realm-execution/tasks/impl/op_task_group_register_task.h"
 #include "realm-execution/tensor_instance_backing.h"
 #include "realm-execution/weight_initialization.h"
 #include "task-spec/dynamic_graph/copy_insertion.h"
@@ -27,6 +30,7 @@
 #include "task-spec/dynamic_graph/training_operation_attrs.dtg.h"
 #include "task-spec/dynamic_graph/update_insertion.h"
 #include "utils/containers/get_only.h"
+#include "utils/containers/map_from_pairs.h"
 #include "utils/containers/map_values.h"
 #include "utils/containers/maybe_get_only.h"
 #include "utils/containers/transform.h"
@@ -35,12 +39,13 @@
 #include "utils/containers/vector_of.h"
 #include "utils/graph/digraph/algorithms/get_topological_ordering.h"
 #include "utils/optional.h"
+#include <cstdlib>
 #include <vector>
 
 namespace FlexFlow {
 
 PCGInstance::PCGInstance(RealmContext &ctx,
-                         std::vector<PreparedInvocation> const &execution_order,
+                         std::vector<InvocationGroup> const &execution_order,
                          TensorInstanceBacking const &tensor_instance_backing,
                          PerDeviceOpStateBacking const &device_state_backing,
                          OptimizerAttrs const &optimizer_attrs,
@@ -59,8 +64,7 @@ RealmContext &PCGInstance::get_realm_context() {
   return this->ctx;
 }
 
-std::vector<PreparedInvocation> const &
-    PCGInstance::get_execution_order() const {
+std::vector<InvocationGroup> const &PCGInstance::get_execution_order() const {
   return this->execution_order;
 }
 
@@ -84,6 +88,21 @@ void PCGInstance::update_optimizer_attrs_for_next_iter() {
 std::optional<Realm::RegionInstance>
     PCGInstance::get_loss_tensor_instance() const {
   return this->logit_grad_tensor;
+}
+
+/**
+ * \brief How many invocations may be fused into a single task.
+ *
+ * From \c FF_MAX_FUSION in the environment, where an unset variable means no
+ * limit and 1 turns fusion off. Temporary, for measuring what the group size
+ * is worth.
+ */
+static std::optional<int> get_max_fusion_group_size() {
+  char const *value = std::getenv("FF_MAX_FUSION");
+  if (value == nullptr) {
+    return std::nullopt;
+  }
+  return std::stoi(value);
 }
 
 PCGInstance create_pcg_instance(
@@ -184,8 +203,9 @@ PCGInstance create_pcg_instance(
   auto [kwarg_graph, node_map] =
       labelled_open_kwarg_dataflow_graph_from_dynamic_open_dataflow_graph(dg);
   std::vector<Node> node_topo_order = get_topological_ordering(kwarg_graph);
-  std::vector<DynamicNodeInvocation> invocation_topo_order = transform(
-      node_topo_order, [&](Node node) { return node_map.at_l(node); });
+  std::vector<DynamicNodeInvocation> invocation_topo_order =
+      sort_invocations_by_pass(transform(
+          node_topo_order, [&](Node node) { return node_map.at_l(node); }));
 
   // Intern the values of the *final* graph. An id only means anything for the
   // graph it came from, so this has to happen after the last pass above, and
@@ -226,9 +246,36 @@ PCGInstance create_pcg_instance(
   }
   ctx.get_outstanding_events().wait();
 
+  std::vector<InvocationGroup> invocation_groups = group_invocations_for_fusion(
+      prepared_execution_order, optimizer_attrs, get_max_fusion_group_size());
+
+  // A group is named to the node running it the same way an invocation is, and
+  // for the same reason. Its members' arguments are already there, so this only
+  // has to say which of them the group runs; it has to happen after the loop
+  // above for that reason.
+  for (InvocationGroup const &group : invocation_groups) {
+    if (!is_fused_invocation_group(group)) {
+      continue;
+    }
+    Realm::Processor target_proc = ctx.processor_from_global_device_id(get_only(
+        assert_unwrap(group.members.front().invocation.node_attrs.device_ids)));
+
+    spawn_op_task_group_register_task(
+        /*ctx=*/ctx,
+        /*target_proc=*/target_proc,
+        /*group_id=*/get_group_id_for_invocation_group(group),
+        /*member_ids=*/
+        transform(group.members,
+                  [](PreparedInvocation const &member) {
+                    return member.invocation_id;
+                  }),
+        /*precondition=*/ctx.get_outstanding_events());
+  }
+  ctx.get_outstanding_events().wait();
+
   return PCGInstance{
       /*ctx=*/ctx,
-      /*execution_order=*/prepared_execution_order,
+      /*execution_order=*/invocation_groups,
       /*tensor_instance_backing=*/tensor_instance_backing,
       /*device_state_backing=*/device_state_backing,
       /*optimizer_attrs=*/optimizer_attrs,
@@ -323,17 +370,12 @@ static Realm::Event issue_collective_reduction(
  * that one \ref DynamicNodeInvocation may become multiple Realm operations
  * (e.g., a parallel operator may turn into multiple copies).
  */
-static Realm::Event spawn_dynamic_node_invocation(
-    RealmContext &ctx,
-    PreparedInvocation const &prepared,
-    std::vector<Realm::Event> const &input_dependencies,
-    std::vector<Realm::Event> const &output_dependencies,
-    OptimizerAttrs const &optimizer_attrs,
-    DistributedFfHandle const &device_handle) {
-  Realm::Event precondition = Realm::Event::merge_events(
-      Realm::Event::merge_events(input_dependencies),
-      Realm::Event::merge_events(output_dependencies));
-
+static Realm::Event
+    spawn_dynamic_node_invocation(RealmContext &ctx,
+                                  PreparedInvocation const &prepared,
+                                  Realm::Event precondition,
+                                  OptimizerAttrs const &optimizer_attrs,
+                                  DistributedFfHandle const &device_handle) {
   DynamicNodeInvocation const &invocation = prepared.invocation;
   TensorInstanceBacking const &tensor_backing = prepared.tensor_backing;
   TensorInstanceBacking const &tensor_instance_backing =
@@ -414,41 +456,77 @@ static Realm::Event spawn_dynamic_node_invocation(
   });
 }
 
+/**
+ * \brief Spawn the Realm operation for a single \ref InvocationGroup.
+ *
+ * A group of one is issued exactly as it was before there was any such thing
+ * as a group; a larger one becomes a single fused task.
+ */
+static Realm::Event
+    spawn_invocation_group(RealmContext &ctx,
+                           InvocationGroup const &group,
+                           Realm::Event precondition,
+                           OptimizerAttrs const &optimizer_attrs,
+                           DistributedFfHandle const &device_handle) {
+  if (!is_fused_invocation_group(group)) {
+    return spawn_dynamic_node_invocation(ctx,
+                                         get_only(group.members),
+                                         precondition,
+                                         optimizer_attrs,
+                                         device_handle);
+  }
+
+  Realm::Processor target_proc = ctx.processor_from_global_device_id(get_only(
+      assert_unwrap(group.members.front().invocation.node_attrs.device_ids)));
+  return spawn_fused_op_task(ctx,
+                             target_proc,
+                             get_group_id_for_invocation_group(group),
+                             optimizer_attrs,
+                             precondition);
+}
+
 static std::map<dynamic_layer_guid_t, Realm::Event>
     execute_distributed_dynamic_node_invocation_set(
         RealmContext &ctx,
-        std::vector<PreparedInvocation> const &invocations,
+        std::vector<InvocationGroup> const &groups,
         OptimizerAttrs const &optimizer_attrs,
         DistributedFfHandle const &device_handle) {
   // For simplicity we'll track a dependency on all outstanding operations up to
   // this point. This will create an effective barrier between phases.
   DependencySet dependency_set{ctx.get_outstanding_events()};
-  return map_from_pairs(
-      transform(invocations, [&](PreparedInvocation const &prepared) {
-        std::vector<Realm::Event> input_dependencies =
-            transform(prepared.input_ids, [&](dynamic_value_id_t const &value) {
-              return dependency_set.get_dependency_for_reader(value);
-            });
-        std::vector<Realm::Event> output_dependencies = transform(
-            prepared.output_ids, [&](dynamic_value_id_t const &value) {
-              return dependency_set.get_dependency_for_writer(value);
-            });
 
-        Realm::Event result = spawn_dynamic_node_invocation(ctx,
-                                                            prepared,
-                                                            input_dependencies,
-                                                            output_dependencies,
-                                                            optimizer_attrs,
-                                                            device_handle);
+  std::vector<std::pair<dynamic_layer_guid_t, Realm::Event>> results;
+  for (InvocationGroup const &group : groups) {
+    // A group depends on everything any of its members reads or writes.
+    // Dependencies between members are carried by the order the fused body
+    // runs them in, so they need no events of their own.
+    std::vector<Realm::Event> input_dependencies =
+        transform(group.input_ids, [&](dynamic_value_id_t const &value) {
+          return dependency_set.get_dependency_for_reader(value);
+        });
+    std::vector<Realm::Event> output_dependencies =
+        transform(group.output_ids, [&](dynamic_value_id_t const &value) {
+          return dependency_set.get_dependency_for_writer(value);
+        });
+    Realm::Event precondition = Realm::Event::merge_events(
+        Realm::Event::merge_events(input_dependencies),
+        Realm::Event::merge_events(output_dependencies));
 
-        for (dynamic_value_id_t const &value : prepared.input_ids) {
-          dependency_set.add_reader(value, result);
-        }
-        for (dynamic_value_id_t const &value : prepared.output_ids) {
-          dependency_set.add_writer(value, result);
-        }
-        return std::pair{prepared.invocation.node_attrs.layer_guid, result};
-      }));
+    Realm::Event result = spawn_invocation_group(
+        ctx, group, precondition, optimizer_attrs, device_handle);
+
+    for (dynamic_value_id_t const &value : group.input_ids) {
+      dependency_set.add_reader(value, result);
+    }
+    for (dynamic_value_id_t const &value : group.output_ids) {
+      dependency_set.add_writer(value, result);
+    }
+    for (PreparedInvocation const &member : group.members) {
+      results.push_back(
+          std::pair{member.invocation.node_attrs.layer_guid, result});
+    }
+  }
+  return map_from_pairs(results);
 }
 
 /**
@@ -498,7 +576,7 @@ std::map<dynamic_layer_guid_t, Realm::Event>
         PCGInstance &pcg_instance, DistributedFfHandle const &device_handle) {
   zero_gradients_for_pcg_instance(pcg_instance);
 
-  std::vector<PreparedInvocation> execution_order =
+  std::vector<InvocationGroup> execution_order =
       pcg_instance.get_execution_order();
   std::map<dynamic_layer_guid_t, Realm::Event> result =
       execute_distributed_dynamic_node_invocation_set(
@@ -513,13 +591,11 @@ std::map<dynamic_layer_guid_t, Realm::Event>
 std::map<dynamic_layer_guid_t, Realm::Event>
     perform_forward_pass_for_pcg_instance(
         PCGInstance &pcg_instance, DistributedFfHandle const &device_handle) {
-  std::vector<PreparedInvocation> execution_order =
-      filter(pcg_instance.get_execution_order(),
-             [](PreparedInvocation const &prepared) {
-               DynamicTaskType task_type =
-                   assert_unwrap(prepared.invocation.node_attrs.task_type);
-               return task_type == DynamicTaskType::FWD;
-             });
+  std::vector<InvocationGroup> execution_order = filter(
+      pcg_instance.get_execution_order(), [](InvocationGroup const &group) {
+        return get_task_type_for_invocation_group(group) ==
+               DynamicTaskType::FWD;
+      });
 
   return execute_distributed_dynamic_node_invocation_set(
       /*ctx=*/pcg_instance.get_realm_context(),
@@ -533,13 +609,11 @@ std::map<dynamic_layer_guid_t, Realm::Event>
         PCGInstance &pcg_instance, DistributedFfHandle const &device_handle) {
   zero_gradients_for_pcg_instance(pcg_instance);
 
-  std::vector<PreparedInvocation> execution_order =
-      filter(pcg_instance.get_execution_order(),
-             [](PreparedInvocation const &prepared) {
-               DynamicTaskType task_type =
-                   assert_unwrap(prepared.invocation.node_attrs.task_type);
-               return task_type == DynamicTaskType::BWD;
-             });
+  std::vector<InvocationGroup> execution_order = filter(
+      pcg_instance.get_execution_order(), [](InvocationGroup const &group) {
+        return get_task_type_for_invocation_group(group) ==
+               DynamicTaskType::BWD;
+      });
 
   return execute_distributed_dynamic_node_invocation_set(
       /*ctx=*/pcg_instance.get_realm_context(),
@@ -551,13 +625,11 @@ std::map<dynamic_layer_guid_t, Realm::Event>
 std::map<dynamic_layer_guid_t, Realm::Event>
     perform_update_pass_for_pcg_instance(
         PCGInstance &pcg_instance, DistributedFfHandle const &device_handle) {
-  std::vector<PreparedInvocation> execution_order =
-      filter(pcg_instance.get_execution_order(),
-             [](PreparedInvocation const &prepared) {
-               DynamicTaskType task_type =
-                   assert_unwrap(prepared.invocation.node_attrs.task_type);
-               return task_type == DynamicTaskType::UPD;
-             });
+  std::vector<InvocationGroup> execution_order = filter(
+      pcg_instance.get_execution_order(), [](InvocationGroup const &group) {
+        return get_task_type_for_invocation_group(group) ==
+               DynamicTaskType::UPD;
+      });
 
   std::map<dynamic_layer_guid_t, Realm::Event> result =
       execute_distributed_dynamic_node_invocation_set(

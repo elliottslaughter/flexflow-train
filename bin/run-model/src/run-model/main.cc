@@ -185,6 +185,35 @@ static bool get_env_flag(char const *name) {
   return get_env(name) == std::optional<std::string>{"1"};
 }
 
+/**
+ * \brief Report how many invocations the model has, by pass, and how they are
+ * grouped into the tasks that are actually issued.
+ *
+ * \see group_invocations_for_fusion
+ */
+static void print_task_summary(PCGInstance const &pcg_instance) {
+  std::map<std::string, int> counts;
+  std::map<size_t, int> group_sizes;
+  int num_invocations = 0;
+  for (InvocationGroup const &group : pcg_instance.get_execution_order()) {
+    group_sizes[group.members.size()] += 1;
+    for (PreparedInvocation const &prepared : group.members) {
+      counts[fmt::to_string(
+          assert_unwrap(prepared.invocation.node_attrs.task_type))] += 1;
+      num_invocations += 1;
+    }
+  }
+  for (auto const &[task_type, count] : counts) {
+    std::cout << task_type << " " << count << std::endl;
+  }
+  std::cout << "invocations " << num_invocations << std::endl;
+  std::cout << "groups " << pcg_instance.get_execution_order().size()
+            << std::endl;
+  for (auto const &[size, count] : group_sizes) {
+    std::cout << "  groups of " << size << ": " << count << std::endl;
+  }
+}
+
 static LossAttrs parse_loss_attrs(std::string const &name) {
   if (name == "mean_squared_error_avg") {
     return LossAttrs{
@@ -553,15 +582,7 @@ int main(int argc, char **argv) {
             get_named_forward_values(mpcg, pcg_instance);
 
         if (get_env_flag("FF_LIST_TASKS")) {
-          std::map<std::string, int> counts;
-          for (PreparedInvocation const &prepared :
-               pcg_instance.get_execution_order()) {
-            counts[fmt::to_string(
-                assert_unwrap(prepared.invocation.node_attrs.task_type))] += 1;
-          }
-          for (auto const &[task_type, count] : counts) {
-            std::cout << task_type << " " << count << std::endl;
-          }
+          print_task_summary(pcg_instance);
           return;
         }
 
