@@ -3,9 +3,32 @@
 #include "kernels/device_scratch.h"
 #include "op-attrs/ops/conv_2d.h"
 #include "op-attrs/tensor_dims.h"
+#include <cstdlib>
+#include <string>
 #include <vector>
 
 namespace FlexFlow {
+
+/**
+ * \brief Whether convolution algorithms are chosen by measuring them.
+ *
+ * On by default; set \c FF_CUDNN_BENCHMARK=0 to fall back to cuDNN's
+ * heuristics. The name follows PyTorch's \c cudnn.benchmark, which is the same
+ * switch, though its default is the other way round.
+ *
+ * Measuring is worth about 6ms of a 172ms YOLOv10x iteration. What it costs is
+ * roughly 8 seconds of startup and, less obviously, reproducibility: the
+ * measured-fastest algorithm is sometimes one that accumulates with atomics, so
+ * two runs of the same program on the same input stop agreeing to the last bit.
+ * Turning this off is the way to get a run that repeats exactly.
+ */
+static bool conv_algorithms_are_measured() {
+  static bool const measured = []() {
+    char const *value = std::getenv("FF_CUDNN_BENCHMARK");
+    return value == nullptr || std::string{value} != "0";
+  }();
+  return measured;
+}
 
 // Picks the fastest algorithm reported by cuDNN's heuristics that both
 // succeeds and fits in the available workspace.
@@ -146,14 +169,25 @@ Conv2DPerDeviceState conv_2d_gpu_init_kernel(PerDeviceFFHandle const &handle,
                                                            &max_num_results));
     std::vector<cudnnConvolutionFwdAlgoPerf_t> perf_results(max_num_results);
     int num_results = 0;
-    checkCUDNN(cudnnFindConvolutionForwardAlgorithm(handle.dnn,
-                                                    inputTensor,
-                                                    filterDesc,
-                                                    convDesc,
-                                                    outputTensor,
-                                                    max_num_results,
-                                                    &num_results,
-                                                    perf_results.data()));
+    if (conv_algorithms_are_measured()) {
+      checkCUDNN(cudnnFindConvolutionForwardAlgorithm(handle.dnn,
+                                                      inputTensor,
+                                                      filterDesc,
+                                                      convDesc,
+                                                      outputTensor,
+                                                      max_num_results,
+                                                      &num_results,
+                                                      perf_results.data()));
+    } else {
+      checkCUDNN(cudnnGetConvolutionForwardAlgorithm_v7(handle.dnn,
+                                                        inputTensor,
+                                                        filterDesc,
+                                                        convDesc,
+                                                        outputTensor,
+                                                        max_num_results,
+                                                        &num_results,
+                                                        perf_results.data()));
+    }
     int idx =
         select_algorithm_idx(perf_results, num_results, handle.workSpaceSize);
     fwdAlgo = perf_results.at(idx).algo;
@@ -169,15 +203,27 @@ Conv2DPerDeviceState conv_2d_gpu_init_kernel(PerDeviceFFHandle const &handle,
     std::vector<cudnnConvolutionBwdFilterAlgoPerf_t> perf_results(
         max_num_results);
     int num_results = 0;
-    checkCUDNN(
-        cudnnFindConvolutionBackwardFilterAlgorithm(handle.dnn,
-                                                    inputTensor,
-                                                    outputTensor,
-                                                    convDesc,
-                                                    filterDesc,
-                                                    max_num_results,
-                                                    &num_results,
-                                                    perf_results.data()));
+    if (conv_algorithms_are_measured()) {
+      checkCUDNN(
+          cudnnFindConvolutionBackwardFilterAlgorithm(handle.dnn,
+                                                      inputTensor,
+                                                      outputTensor,
+                                                      convDesc,
+                                                      filterDesc,
+                                                      max_num_results,
+                                                      &num_results,
+                                                      perf_results.data()));
+    } else {
+      checkCUDNN(
+          cudnnGetConvolutionBackwardFilterAlgorithm_v7(handle.dnn,
+                                                        inputTensor,
+                                                        outputTensor,
+                                                        convDesc,
+                                                        filterDesc,
+                                                        max_num_results,
+                                                        &num_results,
+                                                        perf_results.data()));
+    }
     int idx =
         select_algorithm_idx(perf_results, num_results, handle.workSpaceSize);
     bwdFilterAlgo = perf_results.at(idx).algo;
@@ -193,14 +239,27 @@ Conv2DPerDeviceState conv_2d_gpu_init_kernel(PerDeviceFFHandle const &handle,
     std::vector<cudnnConvolutionBwdDataAlgoPerf_t> perf_results(
         max_num_results);
     int num_results = 0;
-    checkCUDNN(cudnnFindConvolutionBackwardDataAlgorithm(handle.dnn,
-                                                         filterDesc,
-                                                         outputTensor,
-                                                         convDesc,
-                                                         inputTensor,
-                                                         max_num_results,
-                                                         &num_results,
-                                                         perf_results.data()));
+    if (conv_algorithms_are_measured()) {
+      checkCUDNN(
+          cudnnFindConvolutionBackwardDataAlgorithm(handle.dnn,
+                                                    filterDesc,
+                                                    outputTensor,
+                                                    convDesc,
+                                                    inputTensor,
+                                                    max_num_results,
+                                                    &num_results,
+                                                    perf_results.data()));
+    } else {
+      checkCUDNN(
+          cudnnGetConvolutionBackwardDataAlgorithm_v7(handle.dnn,
+                                                      filterDesc,
+                                                      outputTensor,
+                                                      convDesc,
+                                                      inputTensor,
+                                                      max_num_results,
+                                                      &num_results,
+                                                      perf_results.data()));
+    }
     int idx =
         select_algorithm_idx(perf_results, num_results, handle.workSpaceSize);
     bwdDataAlgo = perf_results.at(idx).algo;
