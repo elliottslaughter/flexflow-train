@@ -1,4 +1,5 @@
 #include "realm-execution/tasks/impl/op_task.h"
+#include "kernels/device_aux_streams.h"
 #include "local-execution/task_execution.h"
 #include "realm-execution/device_specific_managed_per_device_ff_handle.h"
 #include "realm-execution/dynamic_tensor_accessor_from_instance.h"
@@ -54,6 +55,14 @@ void op_task_body(void const *args,
       /*optimizer_attrs=*/task_args.optimizer_attrs,
       /*global_device_id=*/ctx.get_current_global_device_id(),
       /*stream=*/ctx.get_current_device_stream());
+
+  // Anything a kernel put on a stream of its own has to be back on the task's
+  // stream before the task returns, or the runtime will take the task to be
+  // finished while that work is still running.
+  device_stream_t stream = ctx.get_current_device_stream();
+  if (stream.is_gpu()) {
+    join_aux_streams(stream.require_gpu());
+  }
 }
 
 Realm::Event spawn_op_task(RealmContext &ctx,

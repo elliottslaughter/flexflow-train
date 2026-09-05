@@ -1,4 +1,5 @@
 #include "realm-execution/tasks/impl/fused_op_task.h"
+#include "kernels/device_aux_streams.h"
 #include "local-execution/task_execution.h"
 #include "realm-execution/device_specific_managed_per_device_ff_handle.h"
 #include "realm-execution/op_task_arg_registry.h"
@@ -49,6 +50,13 @@ void fused_op_task_body(void const *args,
         /*optimizer_attrs=*/launch.optimizer_attrs,
         /*global_device_id=*/global_device_id,
         /*stream=*/stream);
+  }
+
+  // Anything a kernel put on a stream of its own has to be back on the task's
+  // stream before the task returns, or the runtime will take the task to be
+  // finished while that work is still running.
+  if (stream.is_gpu()) {
+    join_aux_streams(stream.require_gpu());
   }
 }
 
