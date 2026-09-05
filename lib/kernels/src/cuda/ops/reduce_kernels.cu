@@ -14,6 +14,7 @@
  */
 
 #include "internal/device.h"
+#include "kernels/device_scratch.h"
 #include "kernels/reduce_kernels_gpu.h"
 
 namespace FlexFlow {
@@ -56,18 +57,19 @@ void gpu_forward_kernel(cudaStream_t stream,
                         float *output_ptr) {
   checkCUDNN(cudnnSetStream(m.handle.dnn, stream));
   float alpha = 1.0f, beta = 0.0f;
-  checkCUDNN(cudnnReduceTensor(m.handle.dnn,
-                               m.reduceDesc,
-                               nullptr /*indices*/,
-                               0 /*indicesSizeInBytes*/,
-                               m.handle.workSpace,
-                               m.handle.workSpaceSize,
-                               &alpha,
-                               m.inputTensor,
-                               input_ptr,
-                               &beta,
-                               m.outputTensor,
-                               output_ptr));
+  checkCUDNN(cudnnReduceTensor(
+      m.handle.dnn,
+      m.reduceDesc,
+      nullptr /*indices*/,
+      0 /*indicesSizeInBytes*/,
+      get_device_scratch_for_stream(stream, m.handle.workSpaceSize),
+      m.handle.workSpaceSize,
+      &alpha,
+      m.inputTensor,
+      input_ptr,
+      &beta,
+      m.outputTensor,
+      output_ptr));
 };
 
 void gpu_backward_kernel(cudaStream_t stream,
