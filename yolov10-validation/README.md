@@ -235,16 +235,75 @@ about the same.
 
 ## Memory
 
-Running a full training iteration is tight on a 32 GB card at batch size 6.
-Realm aborts while allocating instances below about `-ll:fsize 26000`, and above
-about `28000` there is not enough memory left *outside* Realm's pool for CUDA's
-own resources once the update pass is issuing its 513 extra tasks per iteration
-— it fails partway through with `CUDA failure: out of memory` from
-`device_stream_t.cc`. The driver uses `27000`; override with `FSIZE=`.
+A full training iteration is comfortable on a 32 GB card at batch size 6:
+`-ll:fsize 27000` is what the driver uses, and `30000` also works. 300
+iterations run in about 4m20s (~0.86 s/iteration).
 
-Note that `-ll:fsize 28500` (which appears in some older notes) worked only
-because the update tasks were never actually being spawned.
+This was not always true. `get_legion_stream` called `cudaStreamCreate` on every
+kernel launch and never destroyed the result -- roughly 2200 streams per
+training iteration, each costing on the order of a megabyte of device memory
+outside Realm's pool. That capped runs at about 5 full iterations (or 18
+forward-only) and forced `fsize` into a narrow 26000-28000 window: too high and
+CUDA had no room left for its own resources, too low and Realm could not
+allocate its instances. `kernels` now takes the stream from a provider that
+`realm-execution` installs (Realm's per-task stream, `Cuda::get_task_cuda_stream`),
+falling back to one stream per thread when no runtime has installed one.
 
+## Long runs
+
+1400 iterations run in 19m43s (0.85 s/iteration) and stay numerically sound.
+From FlexFlow's own initialization, with nothing re-synchronized at any point:
+
+| after | FlexFlow loss | PyTorch loss, identical loop |
+| ----- | ------------- | ---------------------------- |
+| 100 iterations  | 1.03493 | 1.03488 |
+| 1400 iterations | 1.00526 | 1.00422 |
+
+The gap at 1400 iterations is 1.0e-3 relative, which is *smaller than PyTorch's
+own run-to-run spread*: two PyTorch runs of the same 100 steps came out at
+1.03488 and 1.03773, a difference of 2.8e-3, because cuDNN's backward
+convolution algorithms are not deterministic. So over 1400 composed iterations
+FlexFlow stays within the reference's own noise.
+
+Host memory grows during the first few hundred iterations and then levels off,
+peaking at 23.3 GB and staying flat from roughly iteration 900 onwards. It is
+therefore not an unbounded leak, and wall-clock time rather than memory is what
+limits how long a run can be. FlexFlow takes 0.85 s/iteration where PyTorch
+takes 0.16 s on the same GPU and model.
+
+Getting there took fixing three things, none of which anything could reach while
+the stream leak capped runs at five iterations:
+
+* **The transpose kernel read its own uninitialized output.**
+  `transpose_simple_kernel` computes `out = out * beta + in`, and the forward
+  pass passes `beta = 0`. Multiplying by zero does not clear a stale bit
+  pattern: `0 * NaN` is `NaN`, so whenever a freshly allocated output buffer
+  happened to contain a NaN or an infinity, the transpose produced one.
+  `compute-sanitizer --tool initcheck` reported 5,184,000 uninitialized reads in
+  a single iteration; zero after the fix.
+
+* **The SiLU backward overflowed.** It evaluated the derivative as
+  `e^bx (bx + e^bx + 1) / (e^bx + 1)^2`. `expf` overflows to infinity once `bx`
+  is much above 88, and the expression then evaluates `inf/inf = NaN`. The
+  activations here grow steadily during training (21 -> 35 over the first 14
+  iterations in the class head), so crossing that threshold was a matter of
+  time. Writing the same derivative as `sigmoid(bx) * (1 + bx * (1 -
+  sigmoid(bx)))` is algebraically identical and stays finite. The forward was
+  already written in the stable form; only the backward was affected, on both
+  the GPU and CPU paths.
+
+  What made this one confusing is that `0 * NaN` is `NaN`: the class head
+  receives *exactly zero* gradient when the loss is taken against the box head,
+  and it still produced a NaN, which then poisoned the gradient sum for every
+  tensor upstream of it.
+
+* **A race between iterations**, described under Known issues in earlier
+  revisions and fixed in `zero_gradients_for_pcg_instance`.
+
+`FF_POISON_INSTANCES=1` fills every freshly allocated instance with NaN, which
+turns any read-before-write into an immediate, deterministic NaN instead of a
+silently plausible number. It is what confirmed no tensor is read before it is
+written.
 
 ## Known issues
 
@@ -264,12 +323,9 @@ remains:
   `compare_training_run.py` sees this, because every other stage dumps per
   iteration and so inserts the barrier that hides it.
 
-* **Only about 5 training iterations fit before CUDA runs out of memory**, and
-  about 18 forward-only ones, at `-ll:fsize 26000`. Lowering `fsize` by 1000 MB
-  buys roughly one more full iteration, so something CUDA-side is being
-  allocated per iteration and never released; the allocation that eventually
-  fails is `cudaStreamCreate` in `lib/kernels/src/kernels/device_stream_t.cc`.
-  This predates weight initialization and is present in the forward pass alone.
+* Nothing outstanding from long runs. Two NaN bugs that only appeared once runs
+  could exceed a handful of iterations are described under **Long runs** above;
+  both are fixed.
 
 * **`Detect.bias_init()` is not applied.** After building the model, ultralytics
   overwrites the detection head's final biases (`cv2[-1].bias = 1.0`,
