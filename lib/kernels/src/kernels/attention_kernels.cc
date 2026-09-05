@@ -5,7 +5,7 @@
 namespace FlexFlow::Kernels::MultiHeadAttention {
 
 std::optional<MHAPerDeviceState>
-    init_kernel(DeviceType device_type,
+    init_kernel(device_stream_t const &stream,
                 device_handle_t const &per_device_ff_handle,
                 Allocator &allocator,
                 int num_samples,
@@ -20,8 +20,9 @@ std::optional<MHAPerDeviceState>
                 int qoSeqLength,
                 int kvSeqLength,
                 bool add_bias_kv) {
-  if (device_type == DeviceType::GPU) {
+  if (stream.is_gpu()) {
     return gpu_init_kernel(
+        /*stream=*/stream.require_gpu(),
         /*per_device_ff_handle=*/per_device_ff_handle.require_for_gpu(),
         /*allocator=*/allocator,
         /*num_samples=*/num_samples,
@@ -38,7 +39,7 @@ std::optional<MHAPerDeviceState>
         /*add_bias_kv=*/add_bias_kv);
   } else {
     ASSERT(per_device_ff_handle.is_for_cpu());
-    ASSERT(device_type == DeviceType::CPU);
+    ASSERT(stream.is_cpu());
     return std::nullopt;
   }
 }

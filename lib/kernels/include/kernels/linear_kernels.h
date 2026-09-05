@@ -13,7 +13,7 @@
 namespace FlexFlow {
 
 std::optional<LinearPerDeviceState>
-    linear_init_kernel(DeviceType device_type,
+    linear_init_kernel(device_stream_t const &stream,
                        device_handle_t const &handle,
                        std::optional<Activation> activation,
                        std::optional<RegularizerAttrs> regularizer,

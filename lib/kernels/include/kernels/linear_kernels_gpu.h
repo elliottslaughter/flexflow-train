@@ -9,7 +9,8 @@
 namespace FlexFlow::Kernels::Linear {
 
 LinearPerDeviceState
-    gpu_init_kernel(PerDeviceFFHandle handle,
+    gpu_init_kernel(ffStream_t stream,
+                    PerDeviceFFHandle handle,
                     std::optional<Activation> activation,
                     std::optional<RegularizerAttrs> regularizer,
                     bool use_bias,

@@ -67,8 +67,6 @@ void sparse_categorical_crossentropy_loss_backward_gpu_kernel(
     int num_classes,
     int k,
     float scale_factor) {
-  // cudaStream_t stream;
-  checkCUDA(get_legion_stream(&stream));
   checkCUDA(cudaMemcpy(logit_grad_ptr,
                        logit_ptr,
                        logit_volume * sizeof(float),
@@ -90,8 +88,6 @@ void categorical_crossentropy_loss_backward_gpu_kernel(cudaStream_t stream,
                                                        size_t logit_volume,
                                                        size_t logit_grad_volume,
                                                        float scale_factor) {
-  // cudaStream_t stream;
-  checkCUDA(get_legion_stream(&stream));
   categorical_crossentropy_loss_backward<<<GET_BLOCKS(logit_volume),
                                            CUDA_NUM_THREADS,
                                            0,
@@ -109,8 +105,6 @@ void mean_squared_error_avg_loss_backward_gpu_kernel(cudaStream_t stream,
                                                      size_t logit_volume,
                                                      size_t logit_grad_volume,
                                                      float scale_factor) {
-  // cudaStream_t stream;
-  checkCUDA(get_legion_stream(&stream));
   mean_squared_error_avg_loss_backward<<<GET_BLOCKS(logit_volume),
                                          CUDA_NUM_THREADS,
                                          0,
@@ -127,8 +121,6 @@ void identity_loss_backward_gpu_kernel(cudaStream_t stream,
                                        size_t loss_volume,
                                        size_t loss_grad_volume,
                                        float scale_factor) {
-  // cudaStream_t stream;
-  checkCUDA(get_legion_stream(&stream));
   identity_loss_backward<<<GET_BLOCKS(loss_volume),
                            CUDA_NUM_THREADS,
                            0,

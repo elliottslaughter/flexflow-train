@@ -161,7 +161,8 @@ __global__ void update_metrics_label_kernel(float const *logits,
   }
 }
 
-void update_metrics_sparse_label_kernel_wrapper(float const *logit_ptr,
+void update_metrics_sparse_label_kernel_wrapper(ffStream_t stream,
+                                                float const *logit_ptr,
                                                 int const *label_ptr,
                                                 MetricsAttrs const &me,
                                                 int num_effective_samples,
@@ -173,8 +174,6 @@ void update_metrics_sparse_label_kernel_wrapper(float const *logit_ptr,
   checkCUDA(cudaMemcpy(
       perf_cuda, &perf, sizeof(CUDAPerfMetrics), cudaMemcpyHostToDevice));
 
-  cudaStream_t stream;
-  checkCUDA(get_legion_stream(&stream));
   update_metrics_sparse_label_kernel<<<GET_BLOCKS(num_effective_samples),
                                        CUDA_NUM_THREADS,
                                        0,
@@ -186,7 +185,8 @@ void update_metrics_sparse_label_kernel_wrapper(float const *logit_ptr,
   checkCUDA(cudaFree(perf_cuda));
 }
 
-void update_metrics_label_kernel_wrapper(float const *logit_ptr,
+void update_metrics_label_kernel_wrapper(ffStream_t stream,
+                                         float const *logit_ptr,
                                          float const *label_ptr,
                                          MetricsAttrs const &me,
                                          int num_samples,
@@ -198,8 +198,6 @@ void update_metrics_label_kernel_wrapper(float const *logit_ptr,
   checkCUDA(cudaMemcpy(
       perf_cuda, &perf, sizeof(CUDAPerfMetrics), cudaMemcpyHostToDevice));
 
-  cudaStream_t stream;
-  checkCUDA(get_legion_stream(&stream));
   update_metrics_label_kernel<<<GET_BLOCKS(num_samples), 256, 0, stream>>>(
       logit_ptr, label_ptr, perf_cuda, me, num_samples, num_classes);
   checkCUDA(cudaStreamSynchronize(stream));

@@ -81,7 +81,11 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
         create_random_filled_accessor_w(input.shape, allocator);
 
     BatchNormPerDeviceState per_device_state =
-        batch_norm_gpu_init_kernel(allocator, attrs, input.shape, output.shape);
+        batch_norm_gpu_init_kernel(managed_stream.raw_stream(),
+                                   allocator,
+                                   attrs,
+                                   input.shape,
+                                   output.shape);
 
     batch_norm_gpu_forward_kernel(
         /*stream=*/managed_stream.raw_stream(),
@@ -118,8 +122,12 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
     GenericTensorAccessorW forward_output =
         create_random_filled_accessor_w(input.shape, allocator);
 
-    BatchNormPerDeviceState per_device_state = batch_norm_gpu_init_kernel(
-        allocator, attrs, input.shape, forward_output.shape);
+    BatchNormPerDeviceState per_device_state =
+        batch_norm_gpu_init_kernel(managed_stream.raw_stream(),
+                                   allocator,
+                                   attrs,
+                                   input.shape,
+                                   forward_output.shape);
 
     // cudnnBatchNormalizationBackward reads the batch statistics saved by the
     // forward pass, so the forward kernel has to run first

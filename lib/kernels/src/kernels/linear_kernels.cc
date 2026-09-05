@@ -10,7 +10,7 @@ using namespace FlexFlow::Kernels::Linear;
 namespace FlexFlow {
 
 std::optional<LinearPerDeviceState>
-    linear_init_kernel(DeviceType device_type,
+    linear_init_kernel(device_stream_t const &stream,
                        device_handle_t const &handle,
                        std::optional<Activation> activation,
                        std::optional<RegularizerAttrs> regularizer,
@@ -20,8 +20,9 @@ std::optional<LinearPerDeviceState>
                        DataType output_type,
                        int batch_size,
                        int channel) {
-  if (device_type == DeviceType::GPU) {
+  if (stream.is_gpu()) {
     return gpu_init_kernel(
+        /*stream=*/stream.require_gpu(),
         /*handle=*/handle.require_for_gpu(),
         /*activation=*/activation,
         /*regularizer=*/regularizer,
@@ -32,7 +33,7 @@ std::optional<LinearPerDeviceState>
         /*batch_size=*/batch_size,
         /*channel=*/channel);
   } else {
-    ASSERT(device_type == DeviceType::CPU);
+    ASSERT(stream.is_cpu());
     return std::nullopt;
   }
 }

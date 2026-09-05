@@ -2,6 +2,7 @@
 #define _FLEXFLOW_LIB_TASK_SPEC_INCLUDE_TASK_SPEC_DYNAMIC_GRAPH_WEIGHT_INITIALIZATION_H
 
 #include "kernels/accessor.h"
+#include "kernels/device_stream_t.dtg.h"
 #include "op-attrs/initializer_attrs.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_open_dataflow_graph.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_value_attrs.dtg.h"
@@ -44,6 +45,7 @@ std::map<DynamicValueAttrs, InitializerAttrs>
 void initialize_weight_shard(GenericTensorAccessorW const &shard,
                              DynamicValueAttrs const &value,
                              InitializerAttrs const &initializer,
+                             device_stream_t const &stream,
                              size_t salt);
 
 } // namespace FlexFlow
