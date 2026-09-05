@@ -44,7 +44,11 @@ __global__ void transpose_simple_kernel(std::size_t volume,
       t -= ratio * info.out_strides[i];
       i_idx += ratio * info.in_strides[info.perm[i]];
     }
-    out_ptr[o_idx] = out_ptr[o_idx] * beta + in_ptr[i_idx];
+    if (beta == 0.0f) {
+      out_ptr[o_idx] = in_ptr[i_idx];
+    } else {
+      out_ptr[o_idx] = out_ptr[o_idx] * beta + in_ptr[i_idx];
+    }
   }
 }
 
