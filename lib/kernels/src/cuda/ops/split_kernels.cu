@@ -50,14 +50,12 @@ void split_gpu_forward_kernel(
     ASSERT(dim_at_idx(output.shape.dims, attrs.axis) == attrs.splits.at(i));
     int output_blk_size = get_blk_size(output.shape, attrs.axis);
 
-    copy_with_stride<<<GET_BLOCKS(output_blk_size * num_blks),
-                       CUDA_NUM_THREADS,
-                       0,
-                       stream>>>(output.get_float_ptr(),
-                                 input.get_float_ptr() + offset,
-                                 num_blks,
-                                 output_blk_size,
-                                 input_blk_size);
+    launch_copy_with_stride(stream,
+                            output.get_float_ptr(),
+                            input.get_float_ptr() + offset,
+                            num_blks,
+                            output_blk_size,
+                            input_blk_size);
 
     offset += output_blk_size;
   }
@@ -87,14 +85,12 @@ void split_gpu_backward_kernel(
            attrs.splits.at(i));
     int output_blk_size = get_blk_size(output_grad.shape, attrs.axis);
 
-    copy_with_stride<<<GET_BLOCKS(output_blk_size * num_blks),
-                       CUDA_NUM_THREADS,
-                       0,
-                       stream>>>(input_grad.get_float_ptr() + offset,
-                                 output_grad.get_float_ptr(),
-                                 num_blks,
-                                 input_blk_size,
-                                 output_blk_size);
+    launch_copy_with_stride(stream,
+                            input_grad.get_float_ptr() + offset,
+                            output_grad.get_float_ptr(),
+                            num_blks,
+                            input_blk_size,
+                            output_blk_size);
 
     offset += output_blk_size;
   }
