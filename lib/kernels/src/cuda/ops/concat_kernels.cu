@@ -80,14 +80,14 @@ void concat_gpu_backward_kernel(
     ASSERT(get_num_blks(input_grad.shape, attrs.axis) == num_blks);
     int input_blk_size = get_blk_size(input_grad.shape, attrs.axis);
 
-    add_with_stride<<<GET_BLOCKS(input_blk_size * num_blks),
-                      CUDA_NUM_THREADS,
-                      0,
-                      stream>>>(input_grad.get_float_ptr(),
-                                output_grad.get_float_ptr() + offset,
-                                num_blks,
-                                input_blk_size,
-                                output_blk_size);
+    copy_with_stride<<<GET_BLOCKS(input_blk_size * num_blks),
+                       CUDA_NUM_THREADS,
+                       0,
+                       stream>>>(input_grad.get_float_ptr(),
+                                 output_grad.get_float_ptr() + offset,
+                                 num_blks,
+                                 input_blk_size,
+                                 output_blk_size);
 
     offset += input_blk_size;
   }

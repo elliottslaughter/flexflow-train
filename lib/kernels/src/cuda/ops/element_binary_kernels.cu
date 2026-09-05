@@ -260,7 +260,7 @@ void element_binary_gpu_backward_kernel(
 
   OperatorType op_type = get_op_type(attrs);
   if (op_type == OperatorType::EW_ADD || op_type == OperatorType::EW_SUB) {
-    float alpha = 1.0f, beta = 1.0f;
+    float alpha = 1.0f, beta = 0.0f;
     if (lhs_grad.get_float_ptr() != nullptr) {
       if (attrs.should_broadcast_lhs) {
         checkCUDNN(cudnnReduceTensor(
@@ -315,7 +315,7 @@ void element_binary_gpu_backward_kernel(
       }
     }
   } else if (op_type == OperatorType::EW_MUL) {
-    float alpha1 = 1.0f, alpha2 = 1.0f, beta = 1.0f, zero = 0.0f;
+    float alpha1 = 1.0f, alpha2 = 1.0f, beta = 0.0f, zero = 0.0f;
     if (lhs_grad.get_float_ptr() != nullptr) {
       if (attrs.should_broadcast_lhs) {
         checkCUDNN(cudnnOpTensor(
@@ -404,7 +404,7 @@ void element_binary_gpu_backward_kernel(
     }
   } else if (op_type == OperatorType::EW_MIN ||
              op_type == OperatorType::EW_MAX) {
-    float alpha = 1.0f, beta = 1.0f;
+    float alpha = 1.0f, beta = 0.0f;
     cudnnDataType_t dataType;
     int n;
     int dims[MAX_TENSOR_DIM];
