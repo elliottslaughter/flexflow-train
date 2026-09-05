@@ -7,14 +7,14 @@ namespace FlexFlow {
 DependencySet::DependencySet(Realm::Event precondition)
     : precondition(precondition) {}
 
-void DependencySet::add_writer(DynamicValueAttrs const &value,
+void DependencySet::add_writer(dynamic_value_id_t const &value,
                                Realm::Event writer) {
   AtomicDependencySet &atomic_dependence_set =
       this->get_atomic_dependency_set(value);
   atomic_dependence_set.add_writer(writer);
 }
 
-void DependencySet::add_reader(DynamicValueAttrs const &value,
+void DependencySet::add_reader(dynamic_value_id_t const &value,
                                Realm::Event reader) {
   AtomicDependencySet &atomic_dependence_set =
       this->get_atomic_dependency_set(value);
@@ -22,7 +22,7 @@ void DependencySet::add_reader(DynamicValueAttrs const &value,
 }
 
 Realm::Event DependencySet::get_dependency_for_writer(
-    DynamicValueAttrs const &value) const {
+    dynamic_value_id_t const &value) const {
   if (contains_key(this->atomic_dependencies, value)) {
     return this->atomic_dependencies.at(value).get_dependency_for_writer();
   }
@@ -30,7 +30,7 @@ Realm::Event DependencySet::get_dependency_for_writer(
 }
 
 Realm::Event DependencySet::get_dependency_for_reader(
-    DynamicValueAttrs const &value) const {
+    dynamic_value_id_t const &value) const {
   if (contains_key(this->atomic_dependencies, value)) {
     return this->atomic_dependencies.at(value).get_dependency_for_reader();
   }
@@ -38,7 +38,7 @@ Realm::Event DependencySet::get_dependency_for_reader(
 }
 
 AtomicDependencySet &
-    DependencySet::get_atomic_dependency_set(DynamicValueAttrs const &value) {
+    DependencySet::get_atomic_dependency_set(dynamic_value_id_t const &value) {
   if (!contains_key(this->atomic_dependencies, value)) {
     this->atomic_dependencies.insert(
         {value, AtomicDependencySet{this->precondition}});
