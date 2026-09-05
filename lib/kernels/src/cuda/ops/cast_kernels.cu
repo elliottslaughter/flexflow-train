@@ -54,7 +54,7 @@ struct BackwardKernel {
                   GenericTensorAccessorW const &input) {
     size_t volume = get_num_elements(output.shape.dims).int_from_positive_int();
     cast_backward<<<GET_BLOCKS(volume), CUDA_NUM_THREADS, 0, stream>>>(
-        output.get<IDT>(), input.get<ODT>(), volume, cast_to<ODT>(1.0f));
+        output.get<IDT>(), input.get<ODT>(), volume, cast_to<ODT>(0.0f));
   }
 };
 
