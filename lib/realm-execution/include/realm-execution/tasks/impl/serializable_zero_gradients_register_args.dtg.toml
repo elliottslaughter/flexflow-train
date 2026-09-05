@@ -1,0 +1,25 @@
+namespace = "FlexFlow"
+name = "SerializableZeroGradientsRegisterArgs"
+type = "struct"
+features = [
+  "eq",
+  "fmt",
+  "hash",
+  "json",
+]
+docstring = '''
+\brief The gradient instances a node is to zero at the start of each backward
+pass.
+
+Sent once, during initialization, for the same reason a task's arguments are:
+which instances back the gradients does not change from one iteration to the
+next, and there are on the order of a thousand of them.
+'''
+
+includes = [
+  "realm-execution/tasks/serializer/serializable_tensor_instance_backing.dtg.h",
+]
+
+[[fields]]
+name = "gradients"
+type = "::FlexFlow::SerializableTensorInstanceBacking"

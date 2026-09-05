@@ -13,6 +13,7 @@
 #include "realm-execution/tasks/impl/op_task_arg_register_task.h"
 #include "realm-execution/tasks/impl/op_task_args.dtg.h"
 #include "realm-execution/tasks/impl/op_task_group_register_task.h"
+#include "realm-execution/tasks/impl/zero_gradients_task.h"
 #include "realm-execution/tensor_instance_backing.h"
 #include "realm-execution/weight_initialization.h"
 #include "task-spec/dynamic_graph/copy_insertion.h"
@@ -25,11 +26,14 @@
 #include "task-spec/dynamic_graph/dynamic_value_attrs.dtg.h"
 #include "task-spec/dynamic_graph/loss_insertion.h"
 #include "task-spec/dynamic_graph/make_dynamic_open_dataflow_graph_from_mapped_pcg.h"
+#include "task-spec/dynamic_graph/parallel_tensor_mapping.h"
 #include "task-spec/dynamic_graph/pass_expansion.h"
 #include "task-spec/dynamic_graph/shard_expansion.h"
 #include "task-spec/dynamic_graph/training_operation_attrs.dtg.h"
 #include "task-spec/dynamic_graph/update_insertion.h"
+#include "utils/containers/contains_key.h"
 #include "utils/containers/get_only.h"
+#include "utils/containers/keys.h"
 #include "utils/containers/map_from_pairs.h"
 #include "utils/containers/map_values.h"
 #include "utils/containers/maybe_get_only.h"
@@ -44,16 +48,24 @@
 
 namespace FlexFlow {
 
-PCGInstance::PCGInstance(RealmContext &ctx,
-                         std::vector<InvocationGroup> const &execution_order,
-                         TensorInstanceBacking const &tensor_instance_backing,
-                         PerDeviceOpStateBacking const &device_state_backing,
-                         OptimizerAttrs const &optimizer_attrs,
-                         std::optional<Realm::RegionInstance> logit_grad_tensor)
+PCGInstance::PCGInstance(
+    RealmContext &ctx,
+    std::vector<InvocationGroup> const &execution_order,
+    TensorInstanceBacking const &tensor_instance_backing,
+    PerDeviceOpStateBacking const &device_state_backing,
+    OptimizerAttrs const &optimizer_attrs,
+    std::optional<Realm::RegionInstance> logit_grad_tensor,
+    std::set<Realm::Processor> const &gradient_owning_processors)
     : ctx(ctx), execution_order(execution_order),
       tensor_instance_backing(tensor_instance_backing),
       device_state_backing(device_state_backing),
-      optimizer_attrs(optimizer_attrs), logit_grad_tensor(logit_grad_tensor) {}
+      optimizer_attrs(optimizer_attrs), logit_grad_tensor(logit_grad_tensor),
+      gradient_owning_processors(gradient_owning_processors) {}
+
+std::set<Realm::Processor> const &
+    PCGInstance::get_gradient_owning_processors() const {
+  return this->gradient_owning_processors;
+}
 
 PCGInstance::~PCGInstance() {
   destroy_instances(this->tensor_instance_backing,
@@ -246,6 +258,30 @@ PCGInstance create_pcg_instance(
   }
   ctx.get_outstanding_events().wait();
 
+  // Which gradients each device zeroes at the start of a backward pass, sent
+  // once rather than issued as a fill per instance per iteration. See
+  // zero_gradients_for_pcg_instance.
+  std::map<Realm::Processor, TensorInstanceBacking> gradients_by_proc;
+  for (auto const &[value, instance] : tensor_instance_backing.backing) {
+    if (value.role != mk_dynamic_tensor_role_bwd()) {
+      continue;
+    }
+    Realm::Processor target_proc =
+        ctx.processor_from_global_device_id(pt_mapping_get_device_for_coord(
+            assert_unwrap(value.mapping), assert_unwrap(value.shard_coord)));
+    if (!contains_key(gradients_by_proc, target_proc)) {
+      gradients_by_proc.insert({target_proc, TensorInstanceBacking{{}}});
+    }
+    gradients_by_proc.at(target_proc).backing.insert({value, instance});
+  }
+  for (auto const &[target_proc, gradients] : gradients_by_proc) {
+    spawn_zero_gradients_register_task(
+        /*ctx=*/ctx,
+        /*target_proc=*/target_proc,
+        /*gradients=*/gradients,
+        /*precondition=*/ctx.get_outstanding_events());
+  }
+
   std::vector<InvocationGroup> invocation_groups = group_invocations_for_fusion(
       prepared_execution_order, optimizer_attrs, get_max_fusion_group_size());
 
@@ -280,6 +316,7 @@ PCGInstance create_pcg_instance(
       /*device_state_backing=*/device_state_backing,
       /*optimizer_attrs=*/optimizer_attrs,
       /*logit_grad_tensor=*/logit_grad_tensor,
+      /*gradient_owning_processors=*/keys(gradients_by_proc),
   };
 }
 
@@ -538,7 +575,13 @@ static std::map<dynamic_layer_guid_t, Realm::Event>
  * before each backward pass or they would keep accumulating across training
  * iterations.
  *
- * \note The fills are issued through \ref RealmContext, so they end up in the
+ * One task per device does all of that device's gradients, rather than a Realm
+ * fill per instance. There are more gradient instances than the backward pass
+ * has tasks, so issuing them separately made zeroing the largest source of
+ * Realm operations in an iteration, and Realm's fill is a strided kernel where
+ * a dense instance only needs a memset.
+ *
+ * \note The tasks are issued through \ref RealmContext, so they end up in the
  * context's outstanding events and are therefore picked up as dependencies by
  * the \ref DependencySet that \ref
  * execute_distributed_dynamic_node_invocation_set starts from. No additional
@@ -547,27 +590,17 @@ static std::map<dynamic_layer_guid_t, Realm::Event>
 static void zero_gradients_for_pcg_instance(PCGInstance &pcg_instance) {
   RealmContext &ctx = pcg_instance.get_realm_context();
 
-  // The fills have to wait on everything already in flight. The barrier that
+  // The zeroing has to wait on everything already in flight. The barrier that
   // \ref execute_distributed_dynamic_node_invocation_set sets up only makes
-  // the tasks it spawns depend on the fills; it does nothing to keep the fills
-  // from running ahead of what came before them. On every iteration after the
-  // first, what came before them is the previous iteration's backward and
-  // update tasks, still reading and writing these very instances -- and an
-  // instance's own ready event, which is all the fills used to wait on, comes
-  // from its allocation and triggered long ago.
+  // the tasks it spawns depend on the zeroing; it does nothing to keep the
+  // zeroing from running ahead of what came before it. On every iteration after
+  // the first, what came before it is the previous iteration's backward and
+  // update tasks, still reading and writing these very instances.
   Realm::Event precondition = ctx.get_outstanding_events();
 
-  for (auto const &[value, instance] :
-       pcg_instance.get_tensor_instance_backing().backing) {
-    if (value.role != mk_dynamic_tensor_role_bwd()) {
-      continue;
-    }
-
-    ctx.issue_zero_fill(
-        /*shape=*/assert_unwrap(value.parallel_tensor_shape),
-        /*inst=*/instance.first,
-        /*requests=*/Realm::ProfilingRequestSet{},
-        /*wait_on=*/Realm::Event::merge_events(precondition, instance.second));
+  for (Realm::Processor const &target_proc :
+       pcg_instance.get_gradient_owning_processors()) {
+    spawn_zero_gradients_task(ctx, target_proc, precondition);
   }
 }
 
