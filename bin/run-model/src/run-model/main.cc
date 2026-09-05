@@ -542,10 +542,10 @@ int main(int argc, char **argv) {
 
         if (get_env_flag("FF_LIST_TASKS")) {
           std::map<std::string, int> counts;
-          for (DynamicNodeInvocation const &invocation :
+          for (PreparedInvocation const &prepared :
                pcg_instance.get_execution_order()) {
             counts[fmt::to_string(
-                assert_unwrap(invocation.node_attrs.task_type))] += 1;
+                assert_unwrap(prepared.invocation.node_attrs.task_type))] += 1;
           }
           for (auto const &[task_type, count] : counts) {
             std::cout << task_type << " " << count << std::endl;
