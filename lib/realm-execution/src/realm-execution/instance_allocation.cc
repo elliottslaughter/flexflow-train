@@ -18,8 +18,27 @@
 #include "utils/containers/values.h"
 #include "utils/exception.h"
 #include "utils/optional.h"
+#include <cmath>
+#include <cstdlib>
 
 namespace FlexFlow {
+
+/**
+ * @brief Whether to fill each freshly allocated instance with NaN, so that
+ * reading a tensor before anything has written it produces a NaN rather than
+ * whatever the last user of that memory left behind.
+ *
+ * Turned on by setting \c FF_POISON_INSTANCES in the environment. It is a
+ * debugging aid, not something to leave on: it costs a fill per instance at
+ * startup, and it deliberately turns a silently-wrong result into a loudly
+ * wrong one. Reading uninitialized memory is usually harmless-looking, because
+ * most stale bit patterns are ordinary floats, which is exactly what makes the
+ * resulting bugs intermittent and hard to place.
+ */
+static bool instance_poisoning_is_enabled() {
+  static bool const enabled = std::getenv("FF_POISON_INSTANCES") != nullptr;
+  return enabled;
+}
 
 std::pair<Realm::RegionInstance, Realm::Event>
     perform_instance_allocation_for_value(global_device_id_t const &device_id,
@@ -31,7 +50,22 @@ std::pair<Realm::RegionInstance, Realm::Event>
 
   Realm::Processor proc = ctx.processor_from_global_device_id(device_id);
   Realm::Memory memory = ctx.get_nearest_memory(proc);
-  return ctx.create_instance(memory, shape, Realm::ProfilingRequestSet());
+  std::pair<Realm::RegionInstance, Realm::Event> result =
+      ctx.create_instance(memory, shape, Realm::ProfilingRequestSet());
+
+  if (instance_poisoning_is_enabled()) {
+    float poison = std::nanf("");
+    Realm::Event filled =
+        ctx.issue_fill(assert_unwrap(value.parallel_tensor_shape),
+                       result.first,
+                       &poison,
+                       sizeof(poison),
+                       Realm::ProfilingRequestSet{},
+                       result.second);
+    return std::pair{result.first, filled};
+  }
+
+  return result;
 }
 
 TensorInstanceBacking perform_instance_allocation(
