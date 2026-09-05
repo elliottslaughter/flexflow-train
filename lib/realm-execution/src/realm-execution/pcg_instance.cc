@@ -29,8 +29,9 @@
 #include "task-spec/dynamic_graph/parallel_tensor_mapping.h"
 #include "task-spec/dynamic_graph/pass_expansion.h"
 #include "task-spec/dynamic_graph/shard_expansion.h"
-#include "task-spec/dynamic_graph/training_operation_attrs.dtg.h"
+#include "task-spec/dynamic_graph/training_operation_attrs.h"
 #include "task-spec/dynamic_graph/update_insertion.h"
+#include "utils/containers/contains.h"
 #include "utils/containers/contains_key.h"
 #include "utils/containers/get_only.h"
 #include "utils/containers/keys.h"
@@ -258,12 +259,46 @@ PCGInstance create_pcg_instance(
   }
   ctx.get_outstanding_events().wait();
 
+  // Which gradients have to be cleared before a backward pass, and which are
+  // simply written by whatever produces them. See bwd_task_overwrites_grads.
+  std::map<DynamicValueAttrs, int> num_writers_by_gradient;
+  std::set<DynamicValueAttrs> gradients_needing_zeroing;
+  for (DynamicNodeInvocation const &invocation : dg.invocations) {
+    for (auto const &[slot, value] : invocation.outputs) {
+      if (value.role != mk_dynamic_tensor_role_bwd()) {
+        continue;
+      }
+      num_writers_by_gradient[value] += 1;
+      if (!bwd_task_overwrites_grads(
+              assert_unwrap(invocation.node_attrs.op_attrs))) {
+        gradients_needing_zeroing.insert(value);
+      }
+    }
+  }
+  for (auto const &[value, num_writers] : num_writers_by_gradient) {
+    // The backward kernels overwrite the gradient they produce, so a gradient
+    // with two writers would come out as whichever of them ran last rather than
+    // as the sum. Where a tensor is read more than once, the passes are
+    // supposed to have given each subgradient an instance of its own and
+    // inserted a gradient reduction to sum them.
+    ASSERT(num_writers == 1,
+           "a gradient is written by more than one invocation",
+           value,
+           num_writers);
+  }
+
   // Which gradients each device zeroes at the start of a backward pass, sent
   // once rather than issued as a fill per instance per iteration. See
   // zero_gradients_for_pcg_instance.
   std::map<Realm::Processor, TensorInstanceBacking> gradients_by_proc;
   for (auto const &[value, instance] : tensor_instance_backing.backing) {
     if (value.role != mk_dynamic_tensor_role_bwd()) {
+      continue;
+    }
+    // A gradient nothing writes still has to be cleared: something may read it,
+    // and nothing else will ever put anything in it.
+    if (contains_key(num_writers_by_gradient, value) &&
+        !contains(gradients_needing_zeroing, value)) {
       continue;
     }
     Realm::Processor target_proc =

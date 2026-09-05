@@ -36,4 +36,29 @@ TrainingOpType training_op_attrs_get_op_type(
   });
 }
 
+bool bwd_task_overwrites_grads(
+    TrainingOperationAttrs const &training_op_attrs) {
+  return training_op_attrs.visit<bool>(overload{
+      [](PCGOperatorAttrs const &pcg_op_attrs) -> bool {
+        return pcg_op_attrs.visit<bool>(overload{
+            // Backward scatters into the positions the index selected and
+            // leaves the rest of the gradient alone.
+            [](GatherAttrs const &) { return false; },
+            [](EmbeddingAttrs const &) { return false; },
+            [](TopKAttrs const &) { return false; },
+            // The parallel operators become copies and reductions rather than
+            // tasks, and a reduction folds into its destination.
+            [](CombineAttrs const &) { return false; },
+            [](ReductionAttrs const &) { return false; },
+            [](RepartitionAttrs const &) { return false; },
+            [](ReplicateAttrs const &) { return false; },
+            [](auto const &) { return true; },
+        });
+      },
+      [](LossAttrs const &) -> bool { return true; },
+      [](CopyAttrs const &) -> bool { return true; },
+      [](GradientReductionAttrs const &) -> bool { return false; },
+  });
+}
+
 } // namespace FlexFlow
