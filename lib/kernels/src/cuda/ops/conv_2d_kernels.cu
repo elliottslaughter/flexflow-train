@@ -128,6 +128,7 @@ Conv2DPerDeviceState conv_2d_gpu_init_kernel(PerDeviceFFHandle const &handle,
   // select algorithms, as the latter requires (and destructively writes to)
   // real input, output and gradient buffers.
   ffConvolutionFwdAlgo_t fwdAlgo;
+  size_t fwdWorkspaceSize;
   {
     int max_num_results;
     checkCUDNN(cudnnGetConvolutionForwardAlgorithmMaxCount(handle.dnn,
@@ -142,13 +143,14 @@ Conv2DPerDeviceState conv_2d_gpu_init_kernel(PerDeviceFFHandle const &handle,
                                                       max_num_results,
                                                       &num_results,
                                                       perf_results.data()));
-    fwdAlgo = perf_results
-                  .at(select_algorithm_idx(
-                      perf_results, num_results, handle.workSpaceSize))
-                  .algo;
+    int idx =
+        select_algorithm_idx(perf_results, num_results, handle.workSpaceSize);
+    fwdAlgo = perf_results.at(idx).algo;
+    fwdWorkspaceSize = perf_results.at(idx).memory;
   }
 
   ffConvolutionBwdFilterAlgo_t bwdFilterAlgo;
+  size_t bwdFilterWorkspaceSize;
   {
     int max_num_results;
     checkCUDNN(cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(
@@ -165,13 +167,14 @@ Conv2DPerDeviceState conv_2d_gpu_init_kernel(PerDeviceFFHandle const &handle,
                                                       max_num_results,
                                                       &num_results,
                                                       perf_results.data()));
-    bwdFilterAlgo = perf_results
-                        .at(select_algorithm_idx(
-                            perf_results, num_results, handle.workSpaceSize))
-                        .algo;
+    int idx =
+        select_algorithm_idx(perf_results, num_results, handle.workSpaceSize);
+    bwdFilterAlgo = perf_results.at(idx).algo;
+    bwdFilterWorkspaceSize = perf_results.at(idx).memory;
   }
 
   ffConvolutionBwdDataAlgo_t bwdDataAlgo;
+  size_t bwdDataWorkspaceSize;
   {
     int max_num_results;
     checkCUDNN(cudnnGetConvolutionBackwardDataAlgorithmMaxCount(
@@ -188,10 +191,10 @@ Conv2DPerDeviceState conv_2d_gpu_init_kernel(PerDeviceFFHandle const &handle,
                                                     max_num_results,
                                                     &num_results,
                                                     perf_results.data()));
-    bwdDataAlgo = perf_results
-                      .at(select_algorithm_idx(
-                          perf_results, num_results, handle.workSpaceSize))
-                      .algo;
+    int idx =
+        select_algorithm_idx(perf_results, num_results, handle.workSpaceSize);
+    bwdDataAlgo = perf_results.at(idx).algo;
+    bwdDataWorkspaceSize = perf_results.at(idx).memory;
   }
 
   return Conv2DPerDeviceState{
@@ -203,6 +206,9 @@ Conv2DPerDeviceState conv_2d_gpu_init_kernel(PerDeviceFFHandle const &handle,
       /*fwdAlgo=*/fwdAlgo,
       /*bwdFilterAlgo=*/bwdFilterAlgo,
       /*bwdDataAlgo=*/bwdDataAlgo,
+      /*fwdWorkspaceSize=*/fwdWorkspaceSize,
+      /*bwdFilterWorkspaceSize=*/bwdFilterWorkspaceSize,
+      /*bwdDataWorkspaceSize=*/bwdDataWorkspaceSize,
   };
 }
 
@@ -229,8 +235,8 @@ void conv_2d_gpu_forward_kernel(
       filter.ptr,
       per_device_state.convDesc,
       per_device_state.fwdAlgo,
-      get_device_scratch_for_stream(stream, handle.workSpaceSize),
-      handle.workSpaceSize,
+      get_device_scratch_for_stream(stream, per_device_state.fwdWorkspaceSize),
+      per_device_state.fwdWorkspaceSize,
       &beta,
       per_device_state.outputTensor,
       output.ptr));
@@ -275,8 +281,9 @@ void conv_2d_gpu_backward_kernel(
       output_grad.ptr,
       per_device_state.convDesc,
       per_device_state.bwdFilterAlgo,
-      get_device_scratch_for_stream(stream, handle.workSpaceSize),
-      handle.workSpaceSize,
+      get_device_scratch_for_stream(stream,
+                                    per_device_state.bwdFilterWorkspaceSize),
+      per_device_state.bwdFilterWorkspaceSize,
       &alpha,
       per_device_state.filterDesc,
       filter_grad.ptr));
@@ -300,8 +307,9 @@ void conv_2d_gpu_backward_kernel(
       output_grad.ptr,
       per_device_state.convDesc,
       per_device_state.bwdDataAlgo,
-      get_device_scratch_for_stream(stream, handle.workSpaceSize),
-      handle.workSpaceSize,
+      get_device_scratch_for_stream(stream,
+                                    per_device_state.bwdDataWorkspaceSize),
+      per_device_state.bwdDataWorkspaceSize,
       &alpha,
       per_device_state.inputTensor,
       input_grad.ptr));
