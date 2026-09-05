@@ -18,6 +18,7 @@
 #include "task-spec/global_device_id_t.dtg.h"
 #include "utils/units/milliseconds_t.h"
 #include <optional>
+#include <set>
 
 namespace FlexFlow {
 
@@ -42,12 +43,14 @@ public:
   PCGInstance(PCGInstance const &) = delete;
   PCGInstance(PCGInstance &&) = delete;
 
-  explicit PCGInstance(RealmContext &ctx,
-                       std::vector<InvocationGroup> const &execution_order,
-                       TensorInstanceBacking const &tensor_instance_backing,
-                       PerDeviceOpStateBacking const &device_state_backing,
-                       OptimizerAttrs const &optimizer_attrs,
-                       std::optional<Realm::RegionInstance> logit_grad_tensor);
+  explicit PCGInstance(
+      RealmContext &ctx,
+      std::vector<InvocationGroup> const &execution_order,
+      TensorInstanceBacking const &tensor_instance_backing,
+      PerDeviceOpStateBacking const &device_state_backing,
+      OptimizerAttrs const &optimizer_attrs,
+      std::optional<Realm::RegionInstance> logit_grad_tensor,
+      std::set<Realm::Processor> const &gradient_owning_processors);
 
   ~PCGInstance();
 
@@ -67,6 +70,14 @@ public:
   PerDeviceOpStateBacking const &get_device_state_backing() const;
   OptimizerAttrs const &get_optimizer_attrs() const;
   std::optional<Realm::RegionInstance> get_loss_tensor_instance() const;
+
+  /**
+   * \brief The processors that between them own every gradient instance, and
+   * so the processors the gradient-zeroing task has to be sent to.
+   *
+   * \see zero_gradients_for_pcg_instance
+   */
+  std::set<Realm::Processor> const &get_gradient_owning_processors() const;
   ///\}
 
 private:
@@ -76,6 +87,7 @@ private:
   PerDeviceOpStateBacking device_state_backing;
   OptimizerAttrs optimizer_attrs;
   std::optional<Realm::RegionInstance> logit_grad_tensor;
+  std::set<Realm::Processor> gradient_owning_processors;
 };
 
 /**

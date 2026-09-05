@@ -9,6 +9,7 @@
 #include "realm-execution/tasks/impl/per_device_op_state_init_return_task.h"
 #include "realm-execution/tasks/impl/per_device_op_state_init_task.h"
 #include "realm-execution/tasks/impl/weight_init_task.h"
+#include "realm-execution/tasks/impl/zero_gradients_task.h"
 #include "realm-execution/tasks/task_id_t.h"
 #include "utils/exception.h"
 
@@ -188,6 +189,15 @@ Realm::Event register_all_tasks() {
   pending_registrations.push_back(register_task(Realm::Processor::TOC_PROC,
                                                 task_id_t::FUSED_OP_TASK_ID,
                                                 fused_op_task_body));
+  for (Realm::Processor::Kind kind :
+       {Realm::Processor::LOC_PROC, Realm::Processor::TOC_PROC}) {
+    pending_registrations.push_back(
+        register_task(kind,
+                      task_id_t::ZERO_GRADIENTS_REGISTER_TASK_ID,
+                      zero_gradients_register_task_body));
+    pending_registrations.push_back(register_task(
+        kind, task_id_t::ZERO_GRADIENTS_TASK_ID, zero_gradients_task_body));
+  }
   return Realm::Event::merge_events(pending_registrations);
 }
 

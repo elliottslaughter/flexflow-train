@@ -289,6 +289,12 @@ name = "OP_TASK_GROUP_REGISTER_TASK_ID"
 name = "FUSED_OP_TASK_ID"
 
 [[values]]
+name = "ZERO_GRADIENTS_REGISTER_TASK_ID"
+
+[[values]]
+name = "ZERO_GRADIENTS_TASK_ID"
+
+[[values]]
 name = "NCCL_GETUNIQUEID_TASK_ID"
 
 [[values]]
