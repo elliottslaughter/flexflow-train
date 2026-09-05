@@ -283,6 +283,12 @@ name = "WEIGHT_INIT_TASK_ID"
 name = "OP_TASK_ARG_REGISTER_TASK_ID"
 
 [[values]]
+name = "OP_TASK_GROUP_REGISTER_TASK_ID"
+
+[[values]]
+name = "FUSED_OP_TASK_ID"
+
+[[values]]
 name = "NCCL_GETUNIQUEID_TASK_ID"
 
 [[values]]
