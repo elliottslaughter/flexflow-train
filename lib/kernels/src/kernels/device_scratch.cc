@@ -21,9 +21,18 @@ void *get_device_scratch_for_stream(ffStream_t stream, size_t size) {
 
   Scratch &scratch = scratch_by_stream[stream];
   if (scratch.size < size) {
-    // Deliberately not freeing the old buffer: kernels already launched on this
-    // stream may still be using it, and there is no point at which that is
-    // known to be over. Growing happens at most a handful of times.
+    if (scratch.ptr != nullptr) {
+      // Work already submitted to this stream may still be reading the old
+      // buffer, and nothing else can be: a buffer belongs to one stream, and
+      // work on a single stream runs in order. So waiting on the stream is
+      // enough to make freeing it safe. This costs a synchronization, but a
+      // stream's scratch only ever grows to the largest a kernel on it asks
+      // for, so it happens a handful of times and then never again.
+      checkCUDA(cudaStreamSynchronize(stream));
+      checkCUDA(cudaFree(scratch.ptr));
+      scratch.ptr = nullptr;
+      scratch.size = 0;
+    }
     checkCUDA(cudaMalloc(&scratch.ptr, size));
     scratch.size = size;
   }

@@ -507,9 +507,21 @@ int main(int argc, char **argv) {
 
         std::map<DynamicValueAttrs, DynamicTensorAccessor> input_tensors;
 
+        // The workspace budget an operator may pick an algorithm under.
+        // cuDNN's faster convolution algorithms want a workspace and are passed
+        // over when they do not fit, so this decides which convolution kernels
+        // the model ends up running: at 1MB every convolution here falls back
+        // to a non-tensor-core algorithm, which costs about a third of the
+        // iteration. Only what the chosen algorithm actually needs is
+        // allocated, so a generous budget is not a generous allocation.
+        size_t work_space_size =
+            static_cast<size_t>(std::stoul(
+                get_env("FF_WORKSPACE_MB").value_or(std::string{"256"}))) *
+            1024 * 1024;
+
         DistributedFfHandle device_handle =
             create_distributed_ff_handle(ctx,
-                                         /*workSpaceSize=*/1024 * 1024,
+                                         /*workSpaceSize=*/work_space_size,
                                          /*allowTensorOpMathConversion=*/true);
 
         bool has_gpus = []() {

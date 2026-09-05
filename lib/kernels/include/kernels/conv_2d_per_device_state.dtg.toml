@@ -5,6 +5,7 @@ features = []
 
 includes = [
   "kernels/device.h",
+  "<cstddef>",
 ]
 
 [[fields]]
@@ -38,3 +39,21 @@ type = "ffConvolutionBwdFilterAlgo_t"
 [[fields]]
 name = "bwdDataAlgo"
 type = "ffConvolutionBwdDataAlgo_t"
+
+# How much scratch each of the algorithms above actually wants, as cuDNN's
+# heuristics reported it. A convolution is given a workspace budget to choose an
+# algorithm under, but only what the chosen algorithm needs has to be allocated,
+# and every stream that runs a convolution needs its own (see \ref
+# get_device_scratch_for_stream). Allocating the whole budget per stream instead
+# would put a hard ceiling on how large a budget the model could afford.
+[[fields]]
+name = "fwdWorkspaceSize"
+type = "size_t"
+
+[[fields]]
+name = "bwdFilterWorkspaceSize"
+type = "size_t"
+
+[[fields]]
+name = "bwdDataWorkspaceSize"
+type = "size_t"

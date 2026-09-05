@@ -21,10 +21,9 @@ namespace FlexFlow {
  * Work submitted to a single stream is ordered, so one buffer per stream is
  * enough to make the use exclusive.
  *
- * \note Buffers are created on first use for a given stream and never freed:
- * a stream belongs to the runtime and outlives any one task, and there is no
- * later point at which the last kernel using a buffer is known to have
- * finished.
+ * \note A buffer is created on first use for a given stream, grows to the
+ * largest any kernel on that stream asks for, and is then kept: a stream
+ * belongs to the runtime and outlives any one task.
  */
 void *get_device_scratch_for_stream(ffStream_t stream, size_t size);
 
