@@ -133,6 +133,9 @@ Realm::Event register_all_tasks() {
 
       // Loss task
       task_id_t::LOSS_BWD_TASK_ID,
+
+      // Gradient reduction
+      task_id_t::GRADIENT_REDUCTION_TASK_ID,
   };
 
   for (task_id_t task_id : task_ids) {

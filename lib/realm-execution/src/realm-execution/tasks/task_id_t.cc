@@ -2,6 +2,7 @@
 #include "pcg/optimizer_attrs.dtg.h"
 #include "pcg/optimizers/adam_optimizer_attrs.dtg.h"
 #include "task-spec/dynamic_graph/dynamic_node_attrs.dtg.h"
+#include "task-spec/dynamic_graph/training_operation_attrs.dtg.h"
 #include "utils/optional.h"
 #include "utils/overload.h"
 
@@ -10,6 +11,10 @@ namespace FlexFlow {
 std::optional<task_id_t>
     get_task_id_for_op(DynamicNodeAttrs const &node_attrs,
                        std::optional<OptimizerAttrs> const &optimizer_attrs) {
+  if (assert_unwrap(node_attrs.op_attrs).has<GradientReductionAttrs>()) {
+    return task_id_t::GRADIENT_REDUCTION_TASK_ID;
+  }
+
   DynamicTaskType task_type = assert_unwrap(node_attrs.task_type);
   switch (task_type) {
     case DynamicTaskType::FWD:
