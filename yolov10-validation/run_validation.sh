@@ -24,6 +24,16 @@ FSIZE="${FSIZE:-27000}"
 
 mkdir -p "$WORKDIR"
 
+# Choose convolution algorithms by cuDNN's heuristics rather than by measuring
+# them. Measuring picks algorithms that accumulate with atomics for some of
+# these convolutions, which makes a run differ from the last in the low bits of
+# its gradients -- enough to move the optimizer comparison below by up to
+# 1.5e-3 relative RMS from one run to the next, against 1.8e-4 here, and so to
+# fail it about one run in five. A suite whose job is to catch regressions has
+# to be reproducible first; what the faster algorithms do to the numbers is
+# covered by the per-layer comparisons, which have room for it.
+export FF_CUDNN_BENCHMARK=0
+
 # Run a command inside the project's gpu nix devshell.
 ffdev() {
   ( cd "$REPO" && NIXPKGS_ALLOW_UNFREE=1 "$NIX" develop .#gpu --accept-flake-config --impure --command bash -c "$*" )
