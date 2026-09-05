@@ -30,6 +30,20 @@ void fill_with_zeros(GenericTensorAccessorW const &accessor) {
   DataTypeDispatch1<FillWithZeros>{}(accessor.shape.data_type, accessor);
 }
 
+void fill_with_zeros_on_stream(GenericTensorAccessorW const &accessor,
+                               device_stream_t const &stream) {
+  if (!stream.is_gpu()) {
+    fill_with_zeros(accessor);
+    return;
+  }
+
+  checkCUDA(cudaMemsetAsync(
+      accessor.ptr,
+      0,
+      get_size_in_bytes(accessor.shape).unwrap_num_bytes().unwrap_nonnegative(),
+      stream.require_gpu()));
+}
+
 GenericTensorAccessorW create_accessor_w_filled_with(
     TensorShape const &shape, DataTypeValue val, Allocator const &allocator) {
   NOT_IMPLEMENTED();
