@@ -8,6 +8,7 @@
 #include "kernels/format_accessor_contents.h"
 #include "kernels/managed_ff_stream.h"
 #include "kernels/managed_per_device_ff_handle.h"
+#include "op-attrs/datatype_value.h"
 #include "test/utils/doctest/check_kv.h"
 #include <doctest/doctest.h>
 
@@ -147,8 +148,13 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
           },
           allocator);
 
-      GenericTensorAccessorW input_grad = create_zero_filled_accessor_w(
-          get_tensor_shape_for_accessor_r(input), allocator);
+      // Seeded with non-zero values rather than zeros, so that this checks the
+      // backward pass overwriting its gradients: with zeros here a kernel that
+      // accumulated would pass too. See bwd_task_overwrites_grads.
+      GenericTensorAccessorW input_grad =
+          create_filled_accessor_w(get_tensor_shape_for_accessor_r(input),
+                                   allocator,
+                                   make_float_data_type_value(7));
 
       GenericTensorAccessorR projection =
           create_2d_accessor_r_with_contents<float>(
@@ -158,14 +164,18 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
               },
               allocator);
 
-      GenericTensorAccessorW projection_grad = create_zero_filled_accessor_w(
-          get_tensor_shape_for_accessor_r(projection), allocator);
+      GenericTensorAccessorW projection_grad =
+          create_filled_accessor_w(get_tensor_shape_for_accessor_r(projection),
+                                   allocator,
+                                   make_float_data_type_value(-3));
 
       GenericTensorAccessorR bias =
           create_1d_accessor_r_with_contents<float>({3.0, -1.0}, allocator);
 
-      GenericTensorAccessorW bias_grad = create_zero_filled_accessor_w(
-          get_tensor_shape_for_accessor_r(bias), allocator);
+      GenericTensorAccessorW bias_grad =
+          create_filled_accessor_w(get_tensor_shape_for_accessor_r(bias),
+                                   allocator,
+                                   make_float_data_type_value(11));
 
       GenericTensorAccessorR output = create_2d_accessor_r_with_contents<float>(
           {

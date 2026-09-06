@@ -2,6 +2,7 @@
 #include "kernels/create_accessor_with_contents.h"
 #include "kernels/format_accessor_contents.h"
 #include "kernels/softmax_kernels_gpu.h"
+#include "op-attrs/datatype_value.h"
 #include "test/utils/doctest/check_kv.h"
 #include <doctest/doctest.h>
 
@@ -116,8 +117,11 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
                   {-1, -2, -3},
               },
               allocator);
-      GenericTensorAccessorW input_grad =
-          create_zero_filled_accessor_w(input.shape, allocator);
+      // Seeded with non-zero values rather than zeros, so that this checks the
+      // backward pass overwriting its gradients: with zeros here a kernel that
+      // accumulated would pass too. See bwd_task_overwrites_grads.
+      GenericTensorAccessorW input_grad = create_filled_accessor_w(
+          input.shape, allocator, make_float_data_type_value(7));
 
       SoftmaxPerDeviceState per_device_state =
           softmax_gpu_init_kernel(attrs, input.shape, output.shape);
@@ -169,8 +173,11 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
                   {-1, -2, -3},
               },
               allocator);
-      GenericTensorAccessorW input_grad =
-          create_zero_filled_accessor_w(input.shape, allocator);
+      // Seeded with non-zero values rather than zeros, so that this checks the
+      // backward pass overwriting its gradients: with zeros here a kernel that
+      // accumulated would pass too. See bwd_task_overwrites_grads.
+      GenericTensorAccessorW input_grad = create_filled_accessor_w(
+          input.shape, allocator, make_float_data_type_value(7));
 
       SoftmaxPerDeviceState per_device_state =
           softmax_gpu_init_kernel(attrs, input.shape, output.shape);
