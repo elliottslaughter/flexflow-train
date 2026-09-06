@@ -157,8 +157,10 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
             },
             allocator);
 
-    // The gradients are accumulated into, so they need to start from known
-    // values
+    // Filled with known non-zero values, so that the checks below show the
+    // backward pass overwriting its gradients rather than accumulating into
+    // them. What is expected of them is the reference gradient alone, with no
+    // trace of what was here first.
     GenericTensorAccessorW input_grad =
         create_4d_accessor_w_with_contents<float>(
             {
@@ -196,26 +198,26 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
         create_4d_accessor_r_with_contents<float>(
             {
                 {
-                    {{-1.6772620677947998, -1.510392189025879},
-                     {-1.3435224294662476, -1.1766525506973267}},
-                    {{-0.9591808915138245, -0.6475732326507568},
-                     {-0.4087578058242798, -0.11274851113557816}},
+                    {{0.0727379322052002, -0.010392189025878906},
+                     {-0.09352242946624756, -0.17665255069732666}},
+                    {{-0.20918089151382446, -0.14757323265075684},
+                     {-0.15875780582427979, -0.11274851113557816}},
                 },
                 {
-                    {{0.42665261030197144, 0.5935224294662476},
-                     {0.7603921890258789, 0.927262008190155}},
-                    {{1.3049046993255615, 1.634710431098938},
-                     {1.9905133247375488, 2.198132038116455}},
+                    {{0.17665261030197144, 0.09352242946624756},
+                     {0.010392189025878906, -0.07273799180984497}},
+                    {{0.05490469932556152, 0.134710431098938},
+                     {0.24051332473754883, 0.19813203811645508}},
                 },
             },
             allocator);
 
     GenericTensorAccessorR correct_gamma_grad =
         create_1d_accessor_r_with_contents<float>(
-            {11.037027359008789, -2.2195112705230713}, allocator);
+            {4.037027359008789, 0.7804887294769287}, allocator);
 
     GenericTensorAccessorR correct_beta_grad =
-        create_1d_accessor_r_with_contents<float>({-1.0, 13.5}, allocator);
+        create_1d_accessor_r_with_contents<float>({-1.5, 2.5}, allocator);
 
     CHECK_MESSAGE(
         // cuDNN's batch norm data gradient is not bit-identical to PyTorch's
@@ -223,10 +225,10 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
         check_kv("input_grad", format_accessor_w_contents(input_grad)));
 
     CHECK_MESSAGE(
-        accessors_are_equal(gamma_grad, correct_gamma_grad),
+        accessors_within_epsilon(gamma_grad, correct_gamma_grad, 1e-6),
         check_kv("gamma_grad", format_accessor_w_contents(gamma_grad)));
 
-    CHECK_MESSAGE(accessors_are_equal(beta_grad, correct_beta_grad),
+    CHECK_MESSAGE(accessors_within_epsilon(beta_grad, correct_beta_grad, 1e-6),
                   check_kv("beta_grad", format_accessor_w_contents(beta_grad)));
 
     batch_norm_gpu_cleanup_kernel(allocator, per_device_state);

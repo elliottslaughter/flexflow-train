@@ -36,7 +36,10 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
 
     SUBCASE("gpu_backward_kernel") {
       GenericTensorAccessorR output_grad_accessor = create_filled_accessor_r(
-          output_shape, allocator, make_float_data_type_value(0));
+          output_shape, allocator, make_float_data_type_value(2));
+      // Filled with a different non-zero value, so that the check below shows
+      // the backward pass overwriting the gradient rather than accumulating
+      // into it: a kernel that accumulated would leave 3 here, not 2.
       GenericTensorAccessorW input_grad_accessor = create_filled_accessor_w(
           input_shape, allocator, make_float_data_type_value(1));
 
@@ -45,7 +48,10 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
                                          output_grad_accessor.get_float_ptr(),
                                          input_grad_accessor.get_float_ptr());
 
-      CHECK(contains_non_zero(input_grad_accessor));
+      GenericTensorAccessorR correct = create_filled_accessor_r(
+          input_shape, allocator, make_float_data_type_value(2));
+
+      CHECK(accessors_are_equal(input_grad_accessor, correct));
     }
   }
 }
