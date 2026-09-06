@@ -29,7 +29,8 @@ static GenericTensorAccessorR make_input(Allocator &allocator) {
       allocator);
 }
 
-// input_grad is accumulated into, so it needs to start from a known value
+// Filled with known non-zero values, so that the checks below show the backward
+// pass overwriting the gradient rather than accumulating into it.
 static GenericTensorAccessorW make_input_grad(Allocator &allocator) {
   return create_4d_accessor_w_with_contents<float>(
       {
@@ -209,16 +210,16 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
               {
                   {
                       {
-                          {-4.5, -4, -3.5, -3},
-                          {-2.5, -2.75, -1.5, -1.5},
-                          {-0.5, 0, 0.5, 1},
-                          {1.25, 2, 2.5, 3},
+                          {0, 0, 0, 0},
+                          {0, -0.75, 0, -0.5},
+                          {0, 0, 0, 0},
+                          {-0.25, 0, 0, 0},
                       },
                       {
-                          {3.75, 4, 5, 5},
-                          {5.5, 6, 6.5, 7},
-                          {7.5, 8, 8.5, 9},
-                          {10.25, 10, 10.5, 12},
+                          {0.25, 0, 0.5, 0},
+                          {0, 0, 0, 0},
+                          {0, 0, 0, 0},
+                          {0.75, 0, 0, 1},
                       },
                   },
               },
@@ -261,16 +262,16 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
               {
                   {
                       {
-                          {-4.6875, -4.1875, -3.625, -3.125},
-                          {-2.6875, -2.1875, -1.625, -1.125},
-                          {-0.5625, -0.0625, 0.5, 1},
-                          {1.4375, 1.9375, 2.5, 3},
+                          {-0.1875, -0.1875, -0.125, -0.125},
+                          {-0.1875, -0.1875, -0.125, -0.125},
+                          {-0.0625, -0.0625, 0, 0},
+                          {-0.0625, -0.0625, 0, 0},
                       },
                       {
-                          {3.5625, 4.0625, 4.625, 5.125},
-                          {5.5625, 6.0625, 6.625, 7.125},
-                          {7.6875, 8.1875, 8.75, 9.25},
-                          {9.6875, 10.1875, 10.75, 11.25},
+                          {0.0625, 0.0625, 0.125, 0.125},
+                          {0.0625, 0.0625, 0.125, 0.125},
+                          {0.1875, 0.1875, 0.25, 0.25},
+                          {0.1875, 0.1875, 0.25, 0.25},
                       },
                   },
               },

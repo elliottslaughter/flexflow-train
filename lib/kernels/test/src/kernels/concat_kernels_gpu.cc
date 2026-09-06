@@ -139,7 +139,10 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
             allocator),
     };
 
-    // input_grads are accumulated into, so they need to start from known values
+    // Filled with known non-zero values, so that the checks below show the
+    // backward pass overwriting the gradients rather than accumulating into
+    // them: each input gradient is a slice of the output gradient and nothing
+    // else.
     auto make_input_grads = [&]() {
       return std::vector<GenericTensorAccessorW>{
           create_2d_accessor_w_with_contents<float>(
@@ -205,20 +208,20 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
       std::vector<GenericTensorAccessorR> correct = {
           create_2d_accessor_r_with_contents<float>(
               {
-                  {98.25, 99.5, 100.75},
-                  {102, 103.25, 104.5},
+                  {-1.75, -1.5, -1.25},
+                  {-1, -0.75, -0.5},
               },
               allocator),
           create_2d_accessor_r_with_contents<float>(
               {
-                  {199.75, 201, 202.25},
-                  {203.5, 204.75, 206},
+                  {-0.25, 0, 0.25},
+                  {0.5, 0.75, 1},
               },
               allocator),
           create_2d_accessor_r_with_contents<float>(
               {
-                  {301.25, 302.5, 303.75},
-                  {305, 306.25, 307.5},
+                  {1.25, 1.5, 1.75},
+                  {2, 2.25, 2.5},
               },
               allocator),
       };
@@ -264,20 +267,20 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
       std::vector<GenericTensorAccessorR> correct = {
           create_2d_accessor_r_with_contents<float>(
               {
-                  {98.25, 99.5, 100.75},
-                  {103.5, 104.75, 106},
+                  {-1.75, -1.5, -1.25},
+                  {0.5, 0.75, 1},
               },
               allocator),
           create_2d_accessor_r_with_contents<float>(
               {
-                  {199, 200.25, 201.5},
-                  {204.25, 205.5, 206.75},
+                  {-1, -0.75, -0.5},
+                  {1.25, 1.5, 1.75},
               },
               allocator),
           create_2d_accessor_r_with_contents<float>(
               {
-                  {299.75, 301, 302.25},
-                  {305, 306.25, 307.5},
+                  {-0.25, 0, 0.25},
+                  {2, 2.25, 2.5},
               },
               allocator),
       };
