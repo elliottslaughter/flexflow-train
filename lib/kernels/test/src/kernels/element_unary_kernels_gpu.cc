@@ -127,7 +127,8 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
     GenericTensorAccessorR input = make_input(allocator);
     GenericTensorAccessorR output_grad = make_output_grad(allocator);
 
-    // input_grad is accumulated into, so it needs to start from a known value
+    // Filled with known non-zero values, so that the checks below show the
+    // backward pass overwriting the gradient rather than accumulating into it.
     auto make_input_grad = [&]() {
       return create_2d_accessor_w_with_contents<float>(
           {
@@ -169,10 +170,10 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
       GenericTensorAccessorR correct_input_grad =
           create_2d_accessor_r_with_contents<float>(
               {
-                  {11, 11, 11},
-                  {13, 18, 17},
-                  {16.5, 17.1, 18},
-                  {19, 20.5, 21},
+                  {1, 0, -1},
+                  {0, 4, 2},
+                  {0.5, 0.1, 0},
+                  {0, 0.5, 0},
               },
               allocator);
 
@@ -211,10 +212,12 @@ TEST_SUITE(FF_CUDA_TEST_SUITE) {
       GenericTensorAccessorR correct_input_grad =
           create_2d_accessor_r_with_contents<float>(
               {
-                  {11.088104248046875, 10.82379150390625, 10.98767375946045},
-                  {16.0, 17.710681915283203, 17.0530948638916},
-                  {16.463834762573242, 17.109079360961914, 18.181568145751953},
-                  {19.0, 20.369979858398438, 21.0},
+                  {1.088104248046875, -0.17620849609375, -1.0123262405395508},
+                  {3.0, 3.710681915283203, 2.0530948638916016},
+                  {0.4638347625732422,
+                   0.10907936096191406,
+                   0.18156814575195312},
+                  {0.0, 0.3699798583984375, 0.0},
               },
               allocator);
 
