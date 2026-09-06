@@ -62,7 +62,7 @@ struct TransposeCPUBackwardKernel {
                   GenericTensorAccessorW const &input_grad) const {
     for (TensorDimsCoord const &input_coord :
          get_tensor_dims_coord_set(input_grad.shape.dims)) {
-      input_grad.at<DT>(input_coord) += output_grad.at<DT>(
+      input_grad.at<DT>(input_coord) = output_grad.at<DT>(
           permute_tensor_dims_coord(attrs.permutation, input_coord));
     }
   }

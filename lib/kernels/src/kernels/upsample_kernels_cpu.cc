@@ -3,6 +3,7 @@
 #include "op-attrs/tensor_dims.h"
 #include "op-attrs/tensor_dims_coord.h"
 #include "utils/containers/require_same.h"
+#include "utils/nonnegative_int/nonnegative_range.h"
 
 namespace FlexFlow {
 
@@ -56,21 +57,38 @@ struct UpsampleCPUBackwardKernel {
   void operator()(UpsampleAttrs const &attrs,
                   GenericTensorAccessorR const &output_grad,
                   GenericTensorAccessorW const &input_grad) {
-    auto input_coord_from_output_coord =
-        [&](TensorDimsCoord const &output_coord) -> TensorDimsCoord {
-      TensorDimsCoord input_coord = output_coord;
-      tensor_dims_coord_at_rel_idx(input_coord, relative_ff_dim_t{-1}) /=
-          attrs.scale_factor;
-      tensor_dims_coord_at_rel_idx(input_coord, relative_ff_dim_t{-2}) /=
-          attrs.scale_factor;
-      return input_coord;
-    };
+    nonnegative_int scale_factor =
+        attrs.scale_factor.nonnegative_int_from_int_ge_two();
 
-    for (TensorDimsCoord output_coord :
-         get_tensor_dims_coord_set(output_grad.shape.dims)) {
-      TensorDimsCoord input_coord = input_coord_from_output_coord(output_coord);
+    // Walking the inputs rather than the outputs, which is the other way round
+    // from the forward pass. A nearest-neighbour upsample copies each input
+    // element into a scale_factor by scale_factor block, so the gradient of an
+    // input element is the sum over that block. Summing into a local and
+    // writing once keeps this kernel overwriting its gradient rather than
+    // accumulating into it, which is what the runtime expects of it: see
+    // bwd_task_overwrites_grads, which is why nothing clears the gradient
+    // first.
+    for (TensorDimsCoord const &input_coord :
+         get_tensor_dims_coord_set(input_grad.shape.dims)) {
+      real_type_t<DT> sum = 0;
 
-      input_grad.at<DT>(input_coord) += output_grad.at<DT>(output_coord);
+      for (nonnegative_int dh : nonnegative_range(scale_factor)) {
+        for (nonnegative_int dw : nonnegative_range(scale_factor)) {
+          TensorDimsCoord output_coord = input_coord;
+          tensor_dims_coord_at_rel_idx(output_coord, relative_ff_dim_t{-2}) =
+              tensor_dims_coord_at_rel_idx(input_coord, relative_ff_dim_t{-2}) *
+                  scale_factor +
+              dh;
+          tensor_dims_coord_at_rel_idx(output_coord, relative_ff_dim_t{-1}) =
+              tensor_dims_coord_at_rel_idx(input_coord, relative_ff_dim_t{-1}) *
+                  scale_factor +
+              dw;
+
+          sum += output_grad.at<DT>(output_coord);
+        }
+      }
+
+      input_grad.at<DT>(input_coord) = sum;
     }
   }
 };

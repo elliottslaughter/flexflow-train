@@ -111,7 +111,8 @@ TEST_SUITE(FF_TEST_SUITE) {
             },
             allocator);
 
-    // input_grad is accumulated into, so it needs to start from a known value
+    // Filled with known non-zero values, so that the check below shows the
+    // backward pass overwriting the gradient rather than accumulating into it.
     GenericTensorAccessorW input_grad =
         create_3d_accessor_w_with_contents<float>(
             {
@@ -138,14 +139,14 @@ TEST_SUITE(FF_TEST_SUITE) {
     GenericTensorAccessorR correct = create_3d_accessor_r_with_contents<float>(
         {
             {
-                {-3.375, -2.625, -1.875, -1.125},
-                {-0.375, 0.375, 1.125, 1.875},
-                {2.625, 3.375, 4.125, 4.875},
+                {-0.875, -0.625, -0.375, -0.125},
+                {0.125, 0.375, 0.625, 0.875},
+                {1.125, 1.375, 1.625, 1.875},
             },
             {
-                {2.75, 3.5, 4.25, 5.0},
-                {5.75, 6.5, 7.25, 8.0},
-                {8.75, 9.5, 10.25, 11.0},
+                {-0.75, -0.5, -0.25, 0.0},
+                {0.25, 0.5, 0.75, 1.0},
+                {1.25, 1.5, 1.75, 2.0},
             },
         },
         allocator);

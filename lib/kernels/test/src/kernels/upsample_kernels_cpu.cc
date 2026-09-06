@@ -133,7 +133,10 @@ TEST_SUITE(FF_TEST_SUITE) {
             },
             allocator);
 
-    // input_grad is accumulated into, so it needs to start from a known value
+    // Filled with known non-zero values, so that the check below shows the
+    // backward pass overwriting the gradient rather than accumulating into it.
+    // The sum over each upsampled block is still a sum, but it is summed into
+    // a local and written once.
     GenericTensorAccessorW input_grad =
         create_4d_accessor_w_with_contents<float>(
             {
@@ -161,12 +164,12 @@ TEST_SUITE(FF_TEST_SUITE) {
         {
             {
                 {
-                    {-8.75, -4.75, -0.75},
-                    {6.25, 10.25, 14.25},
+                    {-1.75, -0.75, 0.25},
+                    {4.25, 5.25, 6.25},
                 },
                 {
-                    {21.25, 25.25, 29.25},
-                    {36.25, 40.25, 44.25},
+                    {10.25, 11.25, 12.25},
+                    {16.25, 17.25, 18.25},
                 },
             },
         },

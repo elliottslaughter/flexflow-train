@@ -89,35 +89,27 @@ void element_binary_cpu_backward_kernel(
     }
   }();
 
-  Allocator cpu_allocator = create_local_cpu_memory_allocator();
+  DataType data_type = require_same(
+      output_grad.shape.data_type, lhs.shape.data_type, rhs.shape.data_type);
 
-  GenericTensorAccessorR lhs_grad_update =
-      read_only_accessor_from_write_accessor(map_tensor_accessors3(
-          /*lhs=*/output_grad,
-          /*chs=*/lhs,
-          /*rhs=*/rhs,
-          /*output_data_type=*/
-          require_same(output_grad.shape.data_type,
-                       lhs.shape.data_type,
-                       rhs.shape.data_type),
-          /*f=*/lhs_grad_update_function,
-          /*output_allocator=*/cpu_allocator));
+  // Written straight into the gradients rather than computed apart and added
+  // in. See bwd_task_overwrites_grads: nothing clears these first, so whatever
+  // was in them is not part of the answer.
+  map_tensor_accessors3_to(
+      /*lhs=*/output_grad,
+      /*chs=*/lhs,
+      /*rhs=*/rhs,
+      /*output_data_type=*/data_type,
+      /*f=*/lhs_grad_update_function,
+      /*output=*/lhs_grad);
 
-  GenericTensorAccessorR rhs_grad_update =
-      read_only_accessor_from_write_accessor(map_tensor_accessors3(
-          /*lhs=*/output_grad,
-          /*chs=*/lhs,
-          /*rhs=*/rhs,
-          /*output_data_type=*/
-          require_same(output_grad.shape.data_type,
-                       lhs.shape.data_type,
-                       rhs.shape.data_type),
-          /*f=*/rhs_grad_update_function,
-          /*output_allocator=*/cpu_allocator));
-
-  tensor_accessor_elementwise_add_to(lhs_grad, lhs_grad_update, lhs_grad);
-
-  tensor_accessor_elementwise_add_to(rhs_grad, rhs_grad_update, rhs_grad);
+  map_tensor_accessors3_to(
+      /*lhs=*/output_grad,
+      /*chs=*/lhs,
+      /*rhs=*/rhs,
+      /*output_data_type=*/data_type,
+      /*f=*/rhs_grad_update_function,
+      /*output=*/rhs_grad);
 }
 
 } // namespace FlexFlow

@@ -93,7 +93,7 @@ struct SplitCPUBackwardKernel {
       for (TensorDimsCoord const &output_coord :
            get_tensor_dims_coord_set(output_grad.shape.dims)) {
         input_grad.at<DT>(
-            input_coord_from_output_coord(output_coord, attrs.axis, offset)) +=
+            input_coord_from_output_coord(output_coord, attrs.axis, offset)) =
             output_grad.at<DT>(output_coord);
       }
 
