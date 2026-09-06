@@ -27,6 +27,7 @@
 #include "task-spec/dynamic_graph/dynamic_value_attrs.dtg.h"
 #include "task-spec/dynamic_graph/loss_insertion.h"
 #include "task-spec/dynamic_graph/make_dynamic_open_dataflow_graph_from_mapped_pcg.h"
+#include "task-spec/dynamic_graph/operation_fusion.h"
 #include "task-spec/dynamic_graph/parallel_tensor_mapping.h"
 #include "task-spec/dynamic_graph/pass_expansion.h"
 #include "task-spec/dynamic_graph/shard_expansion.h"
@@ -106,6 +107,19 @@ std::optional<Realm::RegionInstance>
 }
 
 /**
+ * \brief Whether adjacent operators that one kernel can compute are folded
+ * into a single operator before the passes are expanded.
+ *
+ * On by default; set \c FF_FUSE_OPS=0 to keep every operator separate. Not to
+ * be confused with \c FF_MAX_FUSION below, which is about how many separate
+ * operators are run back to back within one task.
+ */
+static bool operations_are_fused() {
+  char const *value = std::getenv("FF_FUSE_OPS");
+  return value == nullptr || std::string{value} != "0";
+}
+
+/**
  * \brief How many invocations may be fused into a single task.
  *
  * From \c FF_MAX_FUSION in the environment, where an unset variable means no
@@ -131,6 +145,24 @@ PCGInstance create_pcg_instance(
 
   DynamicOpenDataflowGraph dg =
       make_dynamic_open_dataflow_graph_from_mapped_pcg(mpcg, device_type);
+
+  if (operations_are_fused()) {
+    // The logit has to survive: perform_loss_insertion runs further down and
+    // finds it by guid, so an operator producing it must not be folded into
+    // whatever reads it.
+    std::set<dynamic_tensor_guid_t> preserved_tensors;
+    if (loss.has_value()) {
+      preserved_tensors.insert(
+          dynamic_tensor_guid_t{loss.value().logit_tensor});
+    }
+
+    // Before pass expansion, so that a fused pair gets a single backward
+    // invocation and the value between them is never created in either
+    // direction. Afterwards it would be too late: the backward pass would
+    // already have been built around two separate operators.
+    dg = perform_operation_fusion(dg, preserved_tensors);
+  }
+
   dg = perform_pass_expansion(dg);
 
   std::map<DynamicValueAttrs, DynamicTensorAccessor> inputs = input_tensors;
