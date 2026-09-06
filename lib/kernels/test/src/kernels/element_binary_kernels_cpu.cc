@@ -3,6 +3,7 @@
 #include "kernels/create_accessor_with_contents.h"
 #include "kernels/format_accessor_contents.h"
 #include "kernels/local_cpu_allocator.h"
+#include "op-attrs/datatype_value.h"
 #include "test/utils/doctest/check_kv.h"
 #include <doctest/doctest.h>
 
@@ -92,11 +93,18 @@ TEST_SUITE(FF_TEST_SUITE) {
           },
           cpu_allocator);
 
-      GenericTensorAccessorW lhs_grad = create_zero_filled_accessor_w(
-          get_tensor_shape_for_accessor_r(lhs), cpu_allocator);
+      // Seeded with a non-zero value rather than zeros, so that this checks the
+      // backward pass overwriting its gradients: with zeros here a kernel that
+      // accumulated would pass too. See bwd_task_overwrites_grads.
+      GenericTensorAccessorW lhs_grad =
+          create_filled_accessor_w(get_tensor_shape_for_accessor_r(lhs),
+                                   cpu_allocator,
+                                   make_float_data_type_value(7));
 
-      GenericTensorAccessorW rhs_grad = create_zero_filled_accessor_w(
-          get_tensor_shape_for_accessor_r(rhs), cpu_allocator);
+      GenericTensorAccessorW rhs_grad =
+          create_filled_accessor_w(get_tensor_shape_for_accessor_r(rhs),
+                                   cpu_allocator,
+                                   make_float_data_type_value(-3));
 
       GenericTensorAccessorR output = create_2d_accessor_r_with_contents<float>(
           {
