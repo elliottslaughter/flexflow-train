@@ -3,6 +3,7 @@
 #include "kernels/create_accessor_with_contents.h"
 #include "kernels/format_accessor_contents.h"
 #include "kernels/local_cpu_allocator.h"
+#include "op-attrs/datatype_value.h"
 #include "test/utils/doctest/check_kv.h"
 #include <doctest/doctest.h>
 
@@ -140,19 +141,24 @@ TEST_SUITE(FF_TEST_SUITE) {
             },
             cpu_allocator);
 
-    GenericTensorAccessorW input_lhs_grad = create_zero_filled_accessor_w(
+    // Seeded with non-zero values rather than zeros, so that this checks the
+    // backward pass overwriting its gradients: with zeros here a kernel that
+    // accumulated would pass too. See bwd_task_overwrites_grads.
+    GenericTensorAccessorW input_lhs_grad = create_filled_accessor_w(
         TensorShape{
             TensorDims{FFOrdered{2_p, 4_p, 3_p}},
             DataType::FLOAT,
         },
-        cpu_allocator);
+        cpu_allocator,
+        make_float_data_type_value(7));
 
-    GenericTensorAccessorW input_rhs_grad = create_zero_filled_accessor_w(
+    GenericTensorAccessorW input_rhs_grad = create_filled_accessor_w(
         TensorShape{
             TensorDims{FFOrdered{2_p, 3_p, 2_p}},
             DataType::FLOAT,
         },
-        cpu_allocator);
+        cpu_allocator,
+        make_float_data_type_value(-3));
 
     batch_matmul_cpu_backward_kernel(
         /*output=*/output,
