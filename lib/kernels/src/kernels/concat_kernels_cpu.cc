@@ -87,7 +87,7 @@ struct ConcatCPUBackwardKernel {
     for (GenericTensorAccessorW const &input_grad : input_grads) {
       for (TensorDimsCoord const &input_coord :
            get_tensor_dims_coord_set(input_grad.shape.dims)) {
-        input_grad.at<DT>(input_coord) += output_grad.at<DT>(
+        input_grad.at<DT>(input_coord) = output_grad.at<DT>(
             output_coord_from_input_coord(input_coord, attrs.axis, offset));
       }
 
