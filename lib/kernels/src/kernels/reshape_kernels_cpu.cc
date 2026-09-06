@@ -40,7 +40,7 @@ struct ReshapeCPUBackwardKernel {
 
     for (TensorDimsCoord const &coord :
          get_tensor_dims_coord_set(output_grad.shape.dims)) {
-      input_grad_view.at<DT>(coord) += output_grad.at<DT>(coord);
+      input_grad_view.at<DT>(coord) = output_grad.at<DT>(coord);
     }
   }
 };

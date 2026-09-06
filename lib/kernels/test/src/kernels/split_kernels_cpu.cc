@@ -19,7 +19,8 @@ static GenericTensorAccessorR make_input(Allocator &allocator) {
       allocator);
 }
 
-// input_grad is accumulated into, so it needs to start from a known value
+// Filled with known non-zero values, so that the checks below show the backward
+// pass overwriting the gradient rather than accumulating into it.
 static GenericTensorAccessorW make_input_grad(Allocator &allocator) {
   return create_2d_accessor_w_with_contents<float>(
       {
@@ -194,10 +195,10 @@ TEST_SUITE(FF_TEST_SUITE) {
       GenericTensorAccessorR correct =
           create_2d_accessor_r_with_contents<float>(
               {
-                  {-3.75, -1.5, 0.75, 3, 5.25, 7.5},
-                  {18.25, 20.5, 22.75, 25, 27.25, 29.5},
-                  {31.75, 34, 36.25, 38.5, 40.75, 43},
-                  {45.25, 47.5, 49.75, 52, 54.25, 56.5},
+                  {-0.75, -0.5, -0.25, 0, 0.25, 0.5},
+                  {9.25, 9.5, 9.75, 10, 10.25, 10.5},
+                  {10.75, 11, 11.25, 11.5, 11.75, 12},
+                  {12.25, 12.5, 12.75, 13, 13.25, 13.5},
               },
               allocator);
 
@@ -278,10 +279,10 @@ TEST_SUITE(FF_TEST_SUITE) {
       GenericTensorAccessorR correct =
           create_2d_accessor_r_with_contents<float>(
               {
-                  {-3.75, -1.5, 10.25, 22.25, 24.5, 26.75},
-                  {8.75, 11, 22.5, 35, 37.25, 39.5},
-                  {21.25, 23.5, 34.75, 47.75, 50, 52.25},
-                  {33.75, 36, 47, 60.5, 62.75, 65},
+                  {-0.75, -0.5, 9.25, 19.25, 19.5, 19.75},
+                  {-0.25, 0, 9.5, 20, 20.25, 20.5},
+                  {0.25, 0.5, 9.75, 20.75, 21, 21.25},
+                  {0.75, 1, 10, 21.5, 21.75, 22},
               },
               allocator);
 
