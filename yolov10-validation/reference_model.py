@@ -157,3 +157,22 @@ def get_layer_inputs(model):
         f = module.f
         result[i] = [f] if isinstance(f, int) else list(f)
     return result
+
+
+def get_flexflow_weight_names(model):
+    """Map each PyTorch parameter name to the FlexFlow weight tensor name.
+
+    The inverse of :data:`SLOT_TO_PARAM`, which needs the module type to
+    disambiguate (a conv2d's ``weight`` is FlexFlow's ``FILTER`` while a batch
+    norm's is its ``GAMMA``).
+    """
+    result = {}
+    for path, module in model.named_modules():
+        if isinstance(module, nn.Conv2d):
+            result[path + ".weight"] = path + ".FILTER"
+            if module.bias is not None:
+                result[path + ".bias"] = path + ".BIAS"
+        elif isinstance(module, nn.BatchNorm2d):
+            result[path + ".weight"] = path + ".GAMMA"
+            result[path + ".bias"] = path + ".BETA"
+    return result
