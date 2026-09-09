@@ -22,7 +22,6 @@ namespace FlexFlow {
 static DeviceSpecificPerDeviceOpState
     init_task_impl(TaskArgumentAccessor const &acc) {
   Allocator allocator = acc.get_allocator();
-  std::optional<ProfilingSettings> profiling = acc.get_profiling_settings();
   DeviceType kernel_device_type = acc.get_kernel_device_type();
   BatchNormAttrs attrs = acc.get_op_attrs().require_batch_norm();
 
