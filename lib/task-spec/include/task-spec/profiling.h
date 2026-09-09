@@ -18,7 +18,6 @@ std::optional<milliseconds_t>
     f(stream, std::forward<Ts>(ts)...);
     return std::nullopt;
   } else {
-    ProfilingSettings settings = assert_unwrap(profiling);
     milliseconds_t elapsed = profiling_wrapper<F, Ts...>(
         f, profiling.value(), stream, std::forward<Ts>(ts)...);
     spdlog::debug(s, elapsed);
