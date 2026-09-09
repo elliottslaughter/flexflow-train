@@ -115,7 +115,7 @@ static CostEstimator create_cost_estimator(
   return CostEstimator::create<LocalCostEstimator>(
       machine.interconnect_specification,
       allocator,
-      ProfilingSettings{/*warmup_iters=*/2, /*measure_iters=*/5},
+      ProfilingSettings{/*warmup_iters=*/2_n, /*measure_iters=*/5_p},
       ff_handle,
       global_device_id);
 }
