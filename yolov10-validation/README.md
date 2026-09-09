@@ -27,8 +27,8 @@ The comparison is done two ways:
   (`lib/kernels/src/cuda/ops/conv_2d_kernels.cu`). Run
   `export_reference.py --tf32 0` to reproduce that control experiment.
 
-Only the **forward** pass is covered. The backward and update passes are not
-validated here.
+The **backward** pass is covered the same way — see "Backward pass" below. The
+**update** pass is not: it does not currently run at all (see "Known issues").
 
 ## How the two frameworks' tensors are matched up
 
@@ -72,18 +72,20 @@ positional arguments, so there was nowhere to hang real options):
 
 | Variable           | Meaning                                                              |
 | ------------------ | -------------------------------------------------------------------- |
-| `FF_LOAD_TENSORS`  | tensor file to copy into the correspondingly-named forward tensors    |
+| `FF_LOAD_TENSORS`  | comma-separated tensor files to copy into the correspondingly-named tensors |
 | `FF_DUMP_TENSORS`  | tensor file to write after running                                    |
 | `FF_DUMP_NAMES`    | comma-separated tensor names to write to `FF_DUMP_TENSORS`            |
 | `FF_FORWARD_ONLY`  | `1` to run only the forward pass (leaves the loaded weights alone)    |
+| `FF_LOSS`          | loss to attach: `mean_squared_error_avg`, `mean_squared_error_sum`, `categorical_crossentropy`, `identity` |
+| `FF_LOSS_LOGIT`    | name of the tensor the loss is taken against (set with `FF_LOSS`)     |
 | `FF_ITERATIONS`    | number of iterations (default 5)                                      |
 | `FF_LIST_TENSORS`  | `1` to print the name and shape of every nameable tensor, then exit   |
 | `FF_LIST_TASKS`    | `1` to print a count of the FWD/BWD/UPD/LOSS tasks, then exit         |
 
 Gradients are addressed by the name of the tensor they are the gradient of,
-with a `grad:` prefix (`grad:model.0.conv.FILTER`). Note that these are all
-zero today: `run-model` builds its `PCGInstance` with no loss, so nothing ever
-seeds the gradient of the output. See "Backward pass" below.
+with a `grad:` prefix (`grad:model.0.conv.FILTER`). The label tensor that loss
+insertion creates is named `label`; it lives outside the computation graph, so
+unlike everything else it is not named after a layer.
 
 With none of them set, `run-model` behaves exactly as before. The file format
 is documented in `ff_tensor_file.py` and implemented on both sides.
@@ -104,30 +106,55 @@ REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize 28500 -cuda:dynfb 0' FF_LIST_TENSORS=1 \
 | `ff_tensor_file.py`    | reader/writer for the binary tensor container                  |
 | `reference_model.py`   | builds the ultralytics model; FlexFlow <-> ultralytics naming  |
 | `export_reference.py`  | writes FlexFlow's inputs and the ultralytics reference outputs |
-| `compare_layerwise.py` | per-layer comparison                                           |
+| `compare_layerwise.py` | per-layer comparison of the forward pass                       |
+| `compare_layerwise_backward.py` | per-layer comparison of the backward pass             |
+| `make_label.py`        | writes the label tensor the loss is taken against              |
 | `compare.py`           | end-to-end comparison and the error metrics                    |
 
 ## Backward pass
 
-Not validated. Three things measured on this model stand in the way, none of
-which are addressed here:
+`compare_layerwise_backward.py` feeds each ultralytics layer FlexFlow's own
+forward activations *and* FlexFlow's own gradient of that layer's output, and
+compares the **weight gradients** it produces. Weight gradients are what is
+compared (rather than input gradients) because they are unambiguous: FlexFlow's
+gradient of a tensor consumed by several layers is the sum over those uses,
+which does not correspond to any single layer's backward.
 
-* `run-model` passes `loss = std::nullopt` to `create_pcg_instance`, so no
-  `LOSS` task is inserted and the gradient of the output is never seeded. The
-  618 `BWD` tasks do run, but every gradient comes out exactly zero (verified by
-  dumping `grad:model.23.boxes` and several weight gradients after a full
-  iteration). Seeding it requires plumbing a `ParallelLossConfig` through
-  `run-model`, which needs a `MappedOperatorTaskGroup` for the loss node.
-* `ParallelLossConfig` carries a single `logit_tensor`, but this head produces
-  two outputs (`boxes` and `scores`), so they would have to be validated one at
-  a time (which is fine: it corresponds exactly to `boxes.backward(g)` in
-  PyTorch).
-* The backward kernels accumulate into gradient buffers (`beta = 1.0`, so that
-  a tensor consumed more than once sums its subgradients), but nothing zeros
-  those buffers between iterations. Only the first iteration of a fresh process
-  would be meaningful.
+Some of these gradients are sums with heavy cancellation, where float32 has
+little precision left and neither framework's answer is meaningful (`model.9`
+and `model.10` have batch-norm shift gradients whose true value is ~1e-19). So
+the reference is also computed in float64, and FlexFlow is judged against how
+well the float32 reference itself does on the same tensor rather than against a
+fixed tolerance.
 
-Separately, after one and after five full training iterations every weight is
-bit-identical to what was loaded, even though 513 `UPD` tasks are scheduled and
-`weight_decay` is non-zero (so the update should move the weights by ~1e-6
-relative even with zero gradients). Cause not determined.
+The loss can only be attached to one tensor at a time, so the driver runs it
+twice: the box head's weights only receive a gradient from `model.23.boxes` and
+the class head's only from `model.23.scores`. Between them the two runs cover
+all 513 weight gradients. Each run also checks FlexFlow's gradient of the logit
+itself against the analytic `2 (y - label) / numel(y)`.
+
+## Known issues
+
+Three bugs had to be fixed before the backward pass could be validated at all;
+they are described in the session notes. What remains:
+
+* **Nine batch-norm scale/shift gradients** are 3-100x worse than the float32
+  reference's own error (they are the only failures the driver reports; cosine
+  similarity is still >= 0.993). The cause is
+  `CUDNN_BATCHNORM_SPATIAL_PERSISTENT`, which
+  `lib/kernels/src/cuda/ops/batch_norm_kernels.cu` selects unconditionally on
+  cuDNN >= 7: building with `mode = CUDNN_BATCHNORM_SPATIAL` instead makes all
+  471/490 gradients pass. Whether the accuracy is worth the speed is a
+  judgement call, so the mode is left as it is.
+
+* **The update pass never runs.**
+  `spawn_dynamic_node_invocation` (`lib/realm-execution/src/realm-execution/pcg_instance.cc`)
+  dispatches on the operator attributes without considering the task type, and
+  returns `NO_EVENT` for `WeightAttrs` — which is also what an `UPD` invocation
+  for a weight carries. So all 513 update tasks are scheduled and none are
+  spawned, and weights are bit-identical after a full training iteration even
+  with non-zero gradients.
+
+* **Weights are never initialized.** Nothing in the execution path applies the
+  `InitializerAttrs` recorded in the computation graph, so without
+  `FF_LOAD_TENSORS` every weight is zero and the model computes zeros.
