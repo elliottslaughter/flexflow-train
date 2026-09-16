@@ -1,8 +1,11 @@
 #include "realm-execution/invocation_fusion.h"
 #include "op-attrs/computation_graph_op_attrs.h"
 #include "realm-execution/tasks/task_id_t.h"
+#include "task-spec/dynamic_graph/dynamic_task_type.h"
 #include "task-spec/dynamic_graph/training_operation_attrs.dtg.h"
+#include "utils/containers/get_only.h"
 #include "utils/containers/maybe_get_only.h"
+#include "utils/containers/values.h"
 #include "utils/containers/vector_of.h"
 #include "utils/optional.h"
 #include "utils/overload.h"
@@ -10,6 +13,29 @@
 #include <set>
 
 namespace FlexFlow {
+
+/**
+ * @brief The pass \p invocation belongs to.
+ *
+ * Copy insertion runs after the passes have been expanded, and a copy is not
+ * part of any pass's task, so it is left without a task type of its own. It
+ * still belongs to a pass, though -- the one that produces and consumes the
+ * tensor it moves -- and that is what decides where it sorts and what it may
+ * be grouped with.
+ */
+static DynamicTaskType
+    get_pass_for_invocation(DynamicNodeInvocation const &invocation) {
+  if (invocation.node_attrs.task_type.has_value()) {
+    return invocation.node_attrs.task_type.value();
+  }
+
+  ASSERT(assert_unwrap(invocation.node_attrs.op_attrs).has<CopyAttrs>(),
+         "a copy is the only invocation without a task type",
+         invocation.node_attrs);
+
+  return dynamic_task_type_from_tensor_role_for_copy(
+      assert_unwrap(get_only(values(invocation.inputs)).role));
+}
 
 /**
  * @brief The device a fused body would run \p invocation on, or \c std::nullopt
@@ -24,7 +50,7 @@ static std::optional<global_device_id_t> get_fusable_device_for_invocation(
     std::optional<OptimizerAttrs> const &optimizer_attrs) {
 
   DynamicNodeAttrs const &node_attrs = invocation.node_attrs;
-  DynamicTaskType task_type = assert_unwrap(node_attrs.task_type);
+  DynamicTaskType task_type = get_pass_for_invocation(invocation);
 
   bool becomes_op_task =
       assert_unwrap(node_attrs.op_attrs)
@@ -87,10 +113,8 @@ std::vector<DynamicNodeInvocation> sort_invocations_by_pass(
       result.begin(),
       result.end(),
       [](DynamicNodeInvocation const &l, DynamicNodeInvocation const &r) {
-        return get_pass_index_for_task_type(
-                   assert_unwrap(l.node_attrs.task_type)) <
-               get_pass_index_for_task_type(
-                   assert_unwrap(r.node_attrs.task_type));
+        return get_pass_index_for_task_type(get_pass_for_invocation(l)) <
+               get_pass_index_for_task_type(get_pass_for_invocation(r));
       });
   return result;
 }
@@ -108,7 +132,7 @@ std::vector<DynamicNodeInvocation> sort_invocations_by_pass(
  */
 static bool
     produces_no_realm_operation(DynamicNodeInvocation const &invocation) {
-  DynamicTaskType task_type = assert_unwrap(invocation.node_attrs.task_type);
+  DynamicTaskType task_type = get_pass_for_invocation(invocation);
   return assert_unwrap(invocation.node_attrs.op_attrs)
       .visit<bool>(overload{
           [&](PCGOperatorAttrs const &pcg_op_attrs) {
@@ -137,7 +161,7 @@ bool is_fused_invocation_group(InvocationGroup const &group) {
 DynamicTaskType
     get_task_type_for_invocation_group(InvocationGroup const &group) {
   ASSERT(!group.members.empty(), "an invocation group is never empty");
-  return assert_unwrap(group.members.front().invocation.node_attrs.task_type);
+  return get_pass_for_invocation(group.members.front().invocation);
 }
 
 /**
@@ -177,8 +201,7 @@ std::vector<InvocationGroup> group_invocations_for_fusion(
   for (PreparedInvocation const &prepared : execution_order) {
     std::optional<global_device_id_t> device_id =
         get_fusable_device_for_invocation(prepared.invocation, optimizer_attrs);
-    DynamicTaskType task_type =
-        assert_unwrap(prepared.invocation.node_attrs.task_type);
+    DynamicTaskType task_type = get_pass_for_invocation(prepared.invocation);
 
     // Anything that is not issued as a plain operator task is a group of its
     // own, and ends whatever run was being built. Ending the run is what keeps
