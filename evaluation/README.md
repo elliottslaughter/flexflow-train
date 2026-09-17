@@ -25,6 +25,14 @@ released, the second against PyTorch tuned the way FlexFlow is.
 
 Intermediate files and per-run logs are left under `work/`.
 
+## Which build they use
+
+The two FlexFlow scripts pick up whichever build is present. If
+`deploy/sapling.sh` has configured a build under `build/`, they use it directly.
+Otherwise they fall back to `proj` and `build/release/` inside `nix develop`,
+which is also where `nixGL` comes from. Each script prints which one it chose.
+The PyTorch script never needs either; it only wants the venv.
+
 ## What these produced here
 
 On an RTX PRO 4500 Blackwell (82 SMs), CUDA 12.8, cuDNN 9.7.1, at commit

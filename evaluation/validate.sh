@@ -33,10 +33,7 @@ UPDATE_STEPS=5
 # measurement left on; see benchmark_flexflow.sh.
 export FF_CUDNN_BENCHMARK=0
 
-ffdev() {
-  ( cd "$REPO" && NIXPKGS_ALLOW_UNFREE=1 nix develop .#gpu \
-      --accept-flake-config --impure --command bash -c "$*" )
-}
+source "$HERE/build_env.sh"
 
 pyrun() {
   PYTHONPATH="$ULTRALYTICS:$HARNESS" "$PYTHON" "$@"
@@ -56,12 +53,12 @@ if [ ! -x "$PYTHON" ]; then
   "$HARNESS/setup_venv.sh"
 fi
 
-echo "=== building FlexFlow ==="
-ffdev 'proj build --release'
+echo "=== building FlexFlow ($FF_BUILD_KIND) ==="
+ffbuild
 
 echo "=== compiling the YOLOv10x graph ==="
-ffdev "./build/release/bin/export-model-arch/export-model-arch yolov10x > '$WORK/cg.json'"
-ffdev "./build/release/bin/compile-model/compile-model '$WORK/cg.json' '$WORK/mpcg.json' passthrough"
+ffrun "$BIN/export-model-arch/export-model-arch yolov10x > '$WORK/cg.json'"
+ffrun "$BIN/compile-model/compile-model '$WORK/cg.json' '$WORK/mpcg.json' passthrough"
 
 echo "=== exporting weights, an input batch and ultralytics' reference output ==="
 pyrun "$HARNESS/export_reference.py" \
@@ -105,11 +102,11 @@ stage() {
 # ---------------------------------------------------------------------------
 stage "forward: every layer"
 
-ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
+ffrun "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
   FF_LOAD_TENSORS='$WORK/inputs.bin' \
   FF_DUMP_TENSORS='$WORK/forward.bin' FF_DUMP_NAMES='$SPINE' \
   FF_FORWARD_ONLY=1 FF_ITERATIONS=1 \
-  nixGL -- ./build/release/bin/run-model/run-model '$WORK/mpcg.json'"
+  $GL $BIN/run-model/run-model '$WORK/mpcg.json'"
 
 pyrun "$HARNESS/compare_layerwise.py" \
   --ff-tensors "$WORK/forward.bin" --inputs "$WORK/inputs.bin" || FAILURES=$((FAILURES+1))
@@ -147,12 +144,12 @@ PY
 for logit in boxes scores; do
   echo
   echo "--- loss against model.23.$logit ---"
-  ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
+  ffrun "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
       FF_LOAD_TENSORS='$WORK/inputs.bin,$WORK/label_$logit.bin' \
     FF_DUMP_TENSORS='$WORK/backward_$logit.bin' FF_DUMP_NAMES='$BWD' \
     FF_LOSS=mean_squared_error_avg FF_LOSS_LOGIT='model.23.$logit' \
     FF_ITERATIONS=1 \
-    nixGL -- ./build/release/bin/run-model/run-model '$WORK/mpcg.json'"
+    $GL $BIN/run-model/run-model '$WORK/mpcg.json'"
 
   pyrun "$HARNESS/compare_layerwise_backward.py" \
     --ff-tensors "$WORK/backward_$logit.bin" --inputs "$WORK/inputs.bin" \
@@ -165,13 +162,13 @@ stage "update: $UPDATE_STEPS SGD steps"
 
 WEIGHT_GRADS=$(echo "$WEIGHTS" | sed 's/\([^,]*\)/grad:\1/g')
 
-ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
+ffrun "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
   FF_LOAD_TENSORS='$WORK/inputs.bin,$WORK/label_boxes.bin' \
   FF_DUMP_TENSORS='$WORK/update_%.bin' \
   FF_DUMP_NAMES='$WEIGHTS,$WEIGHT_GRADS' \
   FF_LOSS=mean_squared_error_avg FF_LOSS_LOGIT=model.23.boxes \
   FF_ITERATIONS=$UPDATE_STEPS \
-  nixGL -- ./build/release/bin/run-model/run-model '$WORK/mpcg.json'"
+  $GL $BIN/run-model/run-model '$WORK/mpcg.json'"
 
 STEP_ARGS=()
 for step in $(seq 0 $((UPDATE_STEPS - 1))); do

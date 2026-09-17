@@ -22,19 +22,16 @@ REPEATS=3
 # and above ~28000 there is too little left for CUDA's own allocations.
 FSIZE=27000
 
-ffdev() {
-  ( cd "$REPO" && NIXPKGS_ALLOW_UNFREE=1 nix develop .#gpu \
-      --accept-flake-config --impure --command bash -c "$*" )
-}
+source "$HERE/build_env.sh"
 
 mkdir -p "$WORK"
 
-echo "=== building FlexFlow ==="
-ffdev 'proj build --release'
+echo "=== building FlexFlow ($FF_BUILD_KIND) ==="
+ffbuild
 
 echo "=== compiling the YOLOv10x graph ==="
-ffdev "./build/release/bin/export-model-arch/export-model-arch yolov10x > '$WORK/cg.json'"
-ffdev "./build/release/bin/compile-model/compile-model '$WORK/cg.json' '$WORK/mpcg.json' passthrough"
+ffrun "$BIN/export-model-arch/export-model-arch yolov10x > '$WORK/cg.json'"
+ffrun "$BIN/compile-model/compile-model '$WORK/cg.json' '$WORK/mpcg.json' passthrough"
 
 echo "=== generating an input batch and a label ==="
 python3 "$HERE/write_tensors.py" --input "$WORK/input.bin" --label "$WORK/label.bin"
@@ -43,11 +40,11 @@ run_iterations() {
   local n="$1"
   local start end
   start=$(date +%s%N)
-  ffdev "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
+  ffrun "REALM_DEFAULT_ARGS='-ll:gpu 1 -ll:fsize $FSIZE -cuda:dynfb 0' \
     FF_LOAD_TENSORS='$WORK/input.bin,$WORK/label.bin' \
     FF_LOSS=mean_squared_error_avg FF_LOSS_LOGIT=model.23.boxes \
     FF_ITERATIONS=$n \
-    nixGL -- ./build/release/bin/run-model/run-model '$WORK/mpcg.json'" \
+    $GL $BIN/run-model/run-model '$WORK/mpcg.json'" \
     > "$WORK/run.log" 2>&1 || { cat "$WORK/run.log"; exit 1; }
   end=$(date +%s%N)
   echo $(( (end - start) / 1000000 ))
