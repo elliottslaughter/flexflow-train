@@ -609,9 +609,13 @@ int main(int argc, char **argv) {
         // to a non-tensor-core algorithm, which costs about a third of the
         // iteration. Only what the chosen algorithm actually needs is
         // allocated, so a generous budget is not a generous allocation.
+        //
+        // 512MB rather than 256: on YOLOv10x the extra headroom lets a handful
+        // more convolutions reach the algorithm they measured fastest, worth
+        // 2.2% of the iteration. 1024 measured no better again.
         size_t work_space_size =
             static_cast<size_t>(std::stoul(
-                get_env("FF_WORKSPACE_MB").value_or(std::string{"256"}))) *
+                get_env("FF_WORKSPACE_MB").value_or(std::string{"512"}))) *
             1024 * 1024;
 
         DistributedFfHandle device_handle =
