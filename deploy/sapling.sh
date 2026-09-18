@@ -31,13 +31,12 @@ done
 
 : "${CC:=gcc-10}"
 : "${CXX:=g++-10}"
-: "${CUDAARCHS:=60}"
 : "${THREADS:=$(nproc)}"
 : "${CMAKE_PREFIX_PATH:=}"
+: "${CMAKE_CUDA_ARCHITECTURES:=120}"
 
 export CC
 export CXX
-export CUDAARCHS
 export THREADS
 
 mkdir -p deploy/deps
@@ -84,13 +83,13 @@ function build_cmake_library {
     export CMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH:$PWD/${dep_name}_install"
 }
 
-if [[ ! -e gasnet ]]; then
-    git clone --depth 1 --single-branch https://github.com/StanfordLegion/gasnet.git
-fi
-if [[ ! -e gasnet/release ]]; then
-    make -C gasnet CONDUIT=ibv
-fi
-export GASNet_ROOT="$PWD"/gasnet/release
+# if [[ ! -e gasnet ]]; then
+#     git clone --depth 1 --single-branch https://github.com/StanfordLegion/gasnet.git
+# fi
+# if [[ ! -e gasnet/release ]]; then
+#     make -C gasnet CONDUIT=ibv
+# fi
+# export GASNet_ROOT="$PWD"/gasnet/release
 
 set -x
 
@@ -102,7 +101,7 @@ build_cmake_library cpptrace https://github.com/jeremy-rifkin/cpptrace/archive/r
 
 build_cmake_library libassert https://github.com/jeremy-rifkin/libassert/archive/refs/tags/v2.2.1.tar.gz -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DLIBASSERT_USE_EXTERNAL_CPPTRACE=ON
 
-build_cmake_library Realm https://github.com/StanfordLegion/realm.git -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_SHARED_LIBS=ON -DREALM_ENABLE_CUDA=ON -DREALM_ENABLE_PREALM=ON -DREALM_ENABLE_CPPTRACE=ON -DREALM_ENABLE_HDF5=OFF -DREALM_MAX_DIM=5
+build_cmake_library Realm https://github.com/StanfordLegion/realm.git -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_SHARED_LIBS=ON -DREALM_ENABLE_CUDA=ON -DREALM_ENABLE_PREALM=ON -DREALM_ENABLE_CPPTRACE=ON -DREALM_ENABLE_HDF5=OFF -DREALM_MAX_DIM=5 -DCMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHITECTURES}"
 
 build_cmake_library benchmark https://github.com/google/benchmark/archive/refs/tags/v1.9.5.tar.gz -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON
 
@@ -136,6 +135,7 @@ popd # deploy/deps
 ff_cmake_flags=(
     -DCMAKE_BUILD_TYPE=RelWithDebInfo
     -DCMAKE_INSTALL_PREFIX="$PWD/../install"
+    -DCMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHITECTURES}"
 )
 
 proj dtgen
