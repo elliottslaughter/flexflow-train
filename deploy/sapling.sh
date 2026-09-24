@@ -117,18 +117,18 @@ build_cmake_library nlohmann_json https://github.com/nlohmann/json/archive/refs/
 
 build_cmake_library NCCL https://github.com/NVIDIA/nccl/archive/refs/tags/v2.29.7-1.tar.gz -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
 
-mkdir -p proj/
-if [[ ! -e proj/venv ]]; then
-    python3 -m venv proj/venv
-fi
+# mkdir -p proj/
+# if [[ ! -e proj/venv ]]; then
+#     python3 -m venv proj/venv
+# fi
 
-# shellcheck disable=SC1091
-source proj/venv/bin/activate
+# # shellcheck disable=SC1091
+# source proj/venv/bin/activate
 
-if ! command -v proj >/dev/null 2>&1
-then
-    pip install --require-virtualenv 'git+https://git.sr.ht/~lockshaw/proj'
-fi
+# if ! command -v proj >/dev/null 2>&1
+# then
+#     pip install --require-virtualenv 'git+https://git.sr.ht/~lockshaw/proj'
+# fi
 
 popd # deploy/deps
 
@@ -138,7 +138,7 @@ ff_cmake_flags=(
     -DCMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHITECTURES}"
 )
 
-proj dtgen
+# proj dtgen
 
 mkdir build install
 pushd build
