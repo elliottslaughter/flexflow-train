@@ -12,8 +12,8 @@ import struct
 
 MAGIC = b"FFTENSR1"
 
-INPUT_DIMS = (6, 3, 640, 640)
-LABEL_DIMS = (6, 64, 8400)
+IMAGE_DIMS = (3, 640, 640)
+BOX_DIMS = (64, 8400)
 
 
 def write_tensor_file(path, tensors):
@@ -52,11 +52,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True)
     parser.add_argument("--label", required=True)
+    parser.add_argument("--batch-size", type=int, default=6)
     args = parser.parse_args()
 
-    write_tensor_file(args.input, {"input": (INPUT_DIMS, filled(INPUT_DIMS, 1))})
-    write_tensor_file(args.label, {"label": (LABEL_DIMS, filled(LABEL_DIMS, 2))})
-    print(f"wrote input {INPUT_DIMS} and label {LABEL_DIMS}")
+    input_dims = (args.batch_size,) + IMAGE_DIMS
+    label_dims = (args.batch_size,) + BOX_DIMS
+    write_tensor_file(args.input, {"input": (input_dims, filled(input_dims, 1))})
+    write_tensor_file(args.label, {"label": (label_dims, filled(label_dims, 2))})
+    print(f"wrote input {input_dims} and label {label_dims}")
 
 
 if __name__ == "__main__":

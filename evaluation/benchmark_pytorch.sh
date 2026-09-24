@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Steady-state training throughput of YOLOv10x under PyTorch, for comparison
+# Steady-state training throughput of YOLOv10 under PyTorch, for comparison
 # with benchmark_flexflow.sh.
 #
-# Same measurement: 500 training iterations at batch size 6, averaged over 3
-# runs, with startup excluded by timing two runs of different lengths and
-# subtracting.
+# Same measurement: 500 training iterations of the model and batch size in
+# config.sh, averaged over 3 runs, with startup excluded by timing two runs of
+# different lengths and subtracting.
 #
 # Reported twice, because the setting matters and upstream ships it off:
 # ultralytics leaves torch.backends.cudnn.benchmark unset (see init_seeds in
@@ -18,7 +18,9 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
-WORK="$HERE/work/pytorch"
+
+source "$HERE/config.sh"
+WORK="$HERE/work/pytorch/$CONFIG"
 
 ITERATIONS=500
 WARMUP=100
@@ -49,8 +51,8 @@ run_iterations() {
   local start end
   start=$(date +%s%N)
   PYTHONPATH="$ULTRALYTICS:$REPO/yolov10-validation" \
-    "$PYTHON" "$HERE/train_pytorch.py" --iterations "$n" $flag \
-    > "$WORK/run.log" 2>&1 || { cat "$WORK/run.log"; exit 1; }
+    "$PYTHON" "$HERE/train_pytorch.py" --iterations "$n" --batch-size "$BATCH" $flag \
+    > "$WORK/run.log" 2>&1 || { cat "$WORK/run.log" >&2; exit 1; }
   end=$(date +%s%N)
   echo $(( (end - start) / 1000000 ))
 }
@@ -79,5 +81,6 @@ for config in shipped benchmark; do
   done
 
   python3 "$HERE/report.py" --label "$title" \
+    --model "$MODEL" --batch-size "$BATCH" \
     --iterations "$ITERATIONS" --timings "$WORK/timings-$config.txt"
 done

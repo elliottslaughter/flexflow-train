@@ -7,6 +7,8 @@ import statistics
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--label", required=True)
+    parser.add_argument("--model", default="yolov10x")
+    parser.add_argument("--batch-size", type=int, default=6)
     parser.add_argument("--iterations", type=int, required=True)
     parser.add_argument("--timings", required=True,
                         help="file of milliseconds, one run per line")
@@ -21,8 +23,8 @@ def main():
         print(f"  {label:<22}{ms / 1000:8.2f} s{ms / args.iterations:9.2f} ms/iteration")
 
     print()
-    print(f"{args.label}: {args.iterations} training iterations, "
-          f"batch size 6, 640x640")
+    print(f"{args.label}: {args.model}, {args.iterations} training iterations, "
+          f"batch size {args.batch_size}, 640x640")
     for i, ms in enumerate(runs, start=1):
         row(f"run {i}", ms)
     row(f"mean of {len(runs)} runs", mean)

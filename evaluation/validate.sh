@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Check FlexFlow's YOLOv10x numerics against ultralytics, in four stages:
+# Check FlexFlow's YOLOv10 numerics against ultralytics, in four stages:
 #
 #   forward   every layer's output, each fed FlexFlow's own intermediates
 #   backward  every layer's output gradient and every weight gradient
@@ -8,7 +8,8 @@
 #   overall   the network's final output, end to end
 #
 # Each stage prints its own PASSED or FAILED line and the worst tensor it saw.
-# The script exits non-zero if any stage fails.
+# The script exits non-zero if any stage fails. The model and batch size come
+# from config.sh (YOLOv10x at batch size 6 unless overridden).
 #
 # Takes about 30 minutes after the build. No arguments, no setup.
 set -euo pipefail
@@ -16,14 +17,15 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 HARNESS="$REPO/yolov10-validation"
-WORK="$HERE/work/validation"
+
+source "$HERE/config.sh"
+WORK="$HERE/work/validation/$CONFIG"
 
 VENV="$HARNESS/.venv"
 PYTHON="$VENV/bin/python"
 ULTRALYTICS="${ULTRALYTICS:-/home/eslaught/flexflow/ultralytics}"
 ULTRALYTICS_REVISION=94e9819c536e2f8a543a5f9b5c5629cdae9b9658
 
-FSIZE=27000
 UPDATE_STEPS=5
 
 # Convolution algorithms chosen by cuDNN's heuristics rather than by measuring
@@ -56,18 +58,20 @@ fi
 echo "=== building FlexFlow ($FF_BUILD_KIND) ==="
 ffbuild
 
-echo "=== compiling the YOLOv10x graph ==="
-ffrun "$BIN/export-model-arch/export-model-arch yolov10x > '$WORK/cg.json'"
+echo "=== compiling the $MODEL graph at batch size $BATCH ==="
+ffrun "$BIN/export-model-arch/export-model-arch --batch-size $BATCH $MODEL > '$WORK/cg.json'"
 ffrun "$BIN/compile-model/compile-model '$WORK/cg.json' '$WORK/mpcg.json' passthrough"
 
 echo "=== exporting weights, an input batch and ultralytics' reference output ==="
 pyrun "$HARNESS/export_reference.py" \
   --cg-json "$WORK/cg.json" \
+  --batch-size "$BATCH" \
   --inputs "$WORK/inputs.bin" \
   --reference "$WORK/reference.bin"
 
 for logit in boxes scores; do
-  pyrun "$HARNESS/make_label.py" --out "$WORK/label_$logit.bin" --logit "model.23.$logit"
+  pyrun "$HARNESS/make_label.py" --batch-size "$BATCH" \
+    --out "$WORK/label_$logit.bin" --logit "model.23.$logit"
 done
 
 names() {

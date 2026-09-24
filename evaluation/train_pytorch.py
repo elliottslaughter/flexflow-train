@@ -1,6 +1,7 @@
-"""Run N training iterations of YOLOv10x under PyTorch and exit.
+"""Run N training iterations of YOLOv10 under PyTorch and exit.
 
-Matches what the FlexFlow benchmark runs: batch size 6 at 640x640, mean-squared
+Matches what the FlexFlow benchmark runs: the same model (``YOLOV10_MODEL``, see
+reference_model.py) and batch size at 640x640, mean-squared
 error against the one2many box head, SGD with the same hyperparameters, and the
 same set of trained weights.
 
@@ -17,7 +18,6 @@ import torch
 
 import reference_model
 
-BATCH = 6
 IMAGE = 640
 BOX_DIMS = (64, 8400)
 
@@ -25,6 +25,7 @@ BOX_DIMS = (64, 8400)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iterations", type=int, required=True)
+    parser.add_argument("--batch-size", type=int, default=6)
     parser.add_argument("--cudnn-benchmark", action="store_true")
     args = parser.parse_args()
 
@@ -37,8 +38,9 @@ def main():
     model.train()
 
     generator = torch.Generator(device=device).manual_seed(1)
-    images = torch.randn((BATCH, 3, IMAGE, IMAGE), generator=generator, device=device)
-    label = torch.randn((BATCH,) + BOX_DIMS, generator=generator, device=device)
+    batch = args.batch_size
+    images = torch.randn((batch, 3, IMAGE, IMAGE), generator=generator, device=device)
+    label = torch.randn((batch,) + BOX_DIMS, generator=generator, device=device)
 
     for name, parameter in model.named_parameters():
         if "one2one" in name:
