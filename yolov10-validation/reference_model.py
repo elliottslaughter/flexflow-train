@@ -1,5 +1,9 @@
-"""Build the upstream (ultralytics) YOLOv10x model and describe how its tensors
+"""Build the upstream (ultralytics) YOLOv10 model and describe how its tensors
 correspond to FlexFlow's.
+
+Which YOLOv10 is built (``yolov10x`` unless told otherwise) comes from the
+``YOLOV10_MODEL`` environment variable, so that every script here agrees with
+the graph FlexFlow was given without each needing an option for it.
 
 FlexFlow's ``lib/models/src/models/yolov10/yolov10.cc`` names each layer it
 creates after the corresponding ultralytics module path (e.g.
@@ -9,12 +13,15 @@ after the layer that consumes it plus the slot it is consumed in (e.g.
 frameworks' tensors purely mechanical, which is what the helpers here rely on.
 """
 
+import os
+from pathlib import Path
+
 import torch
 from torch import nn
 
 from ultralytics.nn.modules.block import C2f, PSA, SCDown, SPPF
 from ultralytics.nn.modules.conv import Concat, Conv
-from ultralytics.nn.tasks import DetectionModel
+from ultralytics.nn.tasks import DetectionModel, yaml_model_load
 
 # FlexFlow tensor slot name -> PyTorch parameter suffix.
 SLOT_TO_PARAM = {
@@ -25,10 +32,28 @@ SLOT_TO_PARAM = {
 }
 
 
-def build_model(cfg="yolov10x.yaml", nc=80, seed=0):
-    """Build a randomly-initialized ultralytics YOLOv10x model."""
+def get_model_name():
+    """The YOLOv10 being validated, e.g. ``yolov10x``."""
+    return os.environ.get("YOLOV10_MODEL", "yolov10x")
+
+
+def build_model(cfg=None, nc=80, seed=0):
+    """Build a randomly-initialized ultralytics YOLOv10 model.
+
+    ``cfg`` defaults to the model named by ``YOLOV10_MODEL``.
+    """
+    if cfg is None:
+        cfg = f"{get_model_name()}.yaml"
+    d = yaml_model_load(cfg)
+    if not d["scale"]:
+        # ultralytics works out the scale from the file name, and its pattern
+        # only knows n, s, m, l and x. yolov10b.yaml defines scale b alone, so
+        # that is what it falls back to anyway, but only after printing a
+        # warning -- to stdout, where it ends up in the tensor names the
+        # validation scripts read back from Python.
+        d["scale"] = Path(cfg).stem[-1]
     torch.manual_seed(seed)
-    model = DetectionModel(cfg, ch=3, nc=nc, verbose=False)
+    model = DetectionModel(d, ch=3, nc=nc, verbose=False)
     return model
 
 

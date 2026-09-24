@@ -11,6 +11,15 @@ separately.
 What is compared is the *step* (the change in the weight), not the weight
 itself: with lr=0.001 the weights barely move, so comparing them directly would
 mostly be comparing a number to itself.
+
+Even the step has a precision floor, though. It is the difference of two
+float32 weights, so it can be no more precise than a rounding step at the
+weight's magnitude: a batch norm scale near 1.0 moving by 2e-6 per step is
+resolved only to about 3%. Two correct float32 optimizers can then disagree by
+one rounding in one element, which is enough to exceed the tolerance. So the
+same steps are also replayed in float64, and a tensor whose FlexFlow step is
+outside the tolerance only fails if FlexFlow is further from the float64 answer
+than float32 PyTorch is -- the same rule compare_layerwise_backward.py uses.
 """
 
 import argparse
@@ -57,30 +66,50 @@ def main():
         print("error: no weights in common", file=sys.stderr)
         return 1
 
-    params = [initial[name].clone().requires_grad_(True) for name in names]
-    optimizer = torch.optim.SGD(
-        params,
-        lr=args.lr,
-        momentum=args.momentum,
-        weight_decay=args.weight_decay,
-        nesterov=args.nesterov,
-        dampening=0.0,
-    )
+    def make_optimizer(dtype):
+        params = [
+            initial[name].clone().to(dtype).requires_grad_(True) for name in names
+        ]
+        optimizer = torch.optim.SGD(
+            params,
+            lr=args.lr,
+            momentum=args.momentum,
+            weight_decay=args.weight_decay,
+            nesterov=args.nesterov,
+            dampening=0.0,
+        )
+        return params, optimizer
+
+    params, optimizer = make_optimizer(torch.float32)
+    params64, optimizer64 = make_optimizer(torch.float64)
 
     rows = []
     for step, dump in enumerate(iterations):
         previous = [p.detach().clone() for p in params]
-        for param, name in zip(params, names):
+        previous64 = [p.detach().clone() for p in params64]
+        for param, param64, name in zip(params, params64, names):
             param.grad = dump[f"grad:{name}"].clone()
+            param64.grad = dump[f"grad:{name}"].to(torch.float64)
         optimizer.step()
+        optimizer64.step()
 
-        for param, before, name in zip(params, previous, names):
+        ff_previous = initial if step == 0 else iterations[step - 1]
+        for param, before, param64, before64, name in zip(
+            params, previous, params64, previous64, names
+        ):
             ff_step = dump[name] - before
             ref_step = param.detach() - before
             if ref_step.abs().max() == 0 and ff_step.abs().max() == 0:
                 continue
             row = summarize(name, ref_step, ff_step)
             row["step"] = step
+            # Both float32 steps against the float64 one, each measured along
+            # its own trajectory.
+            exact = param64.detach() - before64
+            row["ff_exact_rel"] = summarize(
+                name, exact, dump[name] - ff_previous[name]
+            )["rms_rel"]
+            row["ref_exact_rel"] = summarize(name, exact, ref_step)["rms_rel"]
             rows.append(row)
 
     by_step = {}
@@ -91,7 +120,7 @@ def main():
 
     header = (
         f"{'step':>5} {'worst weight update':<34} {'ref rms':>11} "
-        f"{'ff rms':>11} {'rel rms':>10} {'cosine':>11}"
+        f"{'ff rms':>11} {'rel rms':>10} {'fp32 err':>10} {'cosine':>11}"
     )
     print(header)
     print("-" * len(header))
@@ -99,13 +128,25 @@ def main():
         row = by_step[step]
         print(
             f"{row['step']:>5} {row['name']:<34} {row['ref_rms']:>11.4g} "
-            f"{row['got_rms']:>11.4g} {row['rms_rel']:>10.3g} {row['cosine']:>11.8f}"
+            f"{row['got_rms']:>11.4g} {row['rms_rel']:>10.3g} "
+            f"{row['ref_exact_rel']:>10.3g} {row['cosine']:>11.8f}"
+        )
+
+    def is_failure(row):
+        if row["nans"] or row["infs"]:
+            return True
+        if row["rms_rel"] <= args.rms_rel_tolerance:
+            return False
+        return row["ff_exact_rel"] > max(
+            4 * row["ref_exact_rel"], args.rms_rel_tolerance
         )
 
     failed = [
-        f"step {row['step']} {row['name']}: relative RMS error {row['rms_rel']:.3g}"
+        f"step {row['step']} {row['name']}: relative RMS error {row['rms_rel']:.3g} "
+        f"(float64 error: FlexFlow {row['ff_exact_rel']:.3g}, "
+        f"float32 PyTorch {row['ref_exact_rel']:.3g})"
         for row in rows
-        if row["nans"] or row["infs"] or row["rms_rel"] > args.rms_rel_tolerance
+        if is_failure(row)
     ]
 
     print()
@@ -121,7 +162,11 @@ def main():
         if len(failed) > 20:
             print(f"  ... and {len(failed) - 20} more")
         return 1
-    print(f"PASSED (all within {args.rms_rel_tolerance:g} relative RMS error)")
+    print(
+        f"PASSED (all within {args.rms_rel_tolerance:g} relative RMS error, or "
+        f"within 4x float32 PyTorch's own error where float32 cannot resolve "
+        f"the step)"
+    )
     return 0
 
 
