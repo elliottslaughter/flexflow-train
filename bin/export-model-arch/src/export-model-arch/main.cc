@@ -15,9 +15,11 @@
 #include "utils/cli/cli_parse.h"
 #include "utils/cli/cli_parse_result.h"
 #include "utils/cli/cli_spec.h"
+#include "utils/containers/contains_key.h"
 #include "utils/graph/open_dataflow_graph/algorithms/open_dataflow_graph_as_dot.h"
 #include "utils/graph/series_parallel/binary_sp_decomposition_tree/right_associative_binary_sp_tree_from_nary.h"
 #include "utils/graph/series_parallel/get_series_parallel_decomposition.h"
+#include <charconv>
 
 using namespace ::FlexFlow;
 
@@ -60,8 +62,29 @@ ComputationGraph get_default_transformer_computation_graph() {
   return cg;
 }
 
+/**
+ * \brief The YOLOv10 scales, keyed by the name export-model-arch accepts for
+ * each.
+ */
+static std::map<std::string, YOLOv10Scale> const YOLOV10_MODELS = {
+    {"yolov10n", YOLOv10Scale::NANO},
+    {"yolov10s", YOLOv10Scale::SMALL},
+    {"yolov10m", YOLOv10Scale::MEDIUM},
+    {"yolov10b", YOLOv10Scale::BALANCED},
+    {"yolov10l", YOLOv10Scale::LARGE},
+    {"yolov10x", YOLOv10Scale::EXTRA_LARGE},
+};
+
 tl::expected<ComputationGraph, std::string>
-    get_model_computation_graph(std::string const &model_name) {
+    get_model_computation_graph(std::string const &model_name,
+                                std::optional<positive_int> batch_size) {
+  if (batch_size.has_value() && !contains_key(YOLOV10_MODELS, model_name)) {
+    return tl::unexpected(
+        fmt::format("--batch-size is only supported for the YOLOv10 models, "
+                    "not {}",
+                    model_name));
+  }
+
   if (model_name == "transformer") {
     return get_default_transformer_computation_graph();
   } else if (model_name == "inception_v3") {
@@ -74,13 +97,13 @@ tl::expected<ComputationGraph, std::string>
   } else if (model_name == "dlrm") {
     return get_dlrm_computation_graph(get_default_dlrm_config());
   } else if (model_name == "split_test") {
-    positive_int batch_size = 8_p;
-    return get_split_test_computation_graph(batch_size);
+    return get_split_test_computation_graph(/*batch_size=*/8_p);
   } else if (model_name == "single_operator") {
     return get_single_operator_computation_graph();
-  } else if (model_name == "yolov10x") {
-    return get_yolov10_computation_graph(get_yolov10x_config(
-        /*batch_size=*/6_p,
+  } else if (contains_key(YOLOV10_MODELS, model_name)) {
+    return get_yolov10_computation_graph(get_yolov10_config(
+        /*scale=*/YOLOV10_MODELS.at(model_name),
+        /*batch_size=*/batch_size.value_or(6_p),
         /*end2end=*/false));
   } else {
     return tl::unexpected(fmt::format("Unknown model name: {}", model_name));
@@ -88,10 +111,11 @@ tl::expected<ComputationGraph, std::string>
 }
 
 tl::expected<JsonSPModelExport, std::string>
-    get_sp_model_export(std::string const &model_name) {
+    get_sp_model_export(std::string const &model_name,
+                        std::optional<positive_int> batch_size) {
   ComputationGraph computation_graph = ({
     tl::expected<ComputationGraph, std::string> result =
-        get_model_computation_graph(model_name);
+        get_model_computation_graph(model_name, batch_size);
     if (!result.has_value()) {
       return tl::unexpected(result.error());
     }
@@ -159,8 +183,17 @@ int main(int argc, char **argv) {
       "dlrm",
       "split_test",
       "single_operator",
-      "yolov10x",
   };
+  for (auto const &[name, scale] : YOLOV10_MODELS) {
+    model_options.push_back(name);
+  }
+
+  CLIArgumentKey key_batch_size = cli.add_named_argument(CLINamedArgumentSpec{
+      /*long_flag=*/"batch-size",
+      /*metavar=*/"N",
+      /*choices=*/std::nullopt,
+      /*description=*/"batch size of a YOLOv10 model (default 6)",
+  });
 
   CLIArgumentKey key_model_name =
       cli.add_positional_argument(CLIPositionalArgumentSpec{
@@ -196,6 +229,20 @@ int main(int argc, char **argv) {
   bool sp_decompositition = cli_get_flag(parsed, key_sp_decomposition);
   bool dot = cli_get_flag(parsed, key_dot);
   bool preprocessed_dot = cli_get_flag(parsed, key_preprocessed_dot);
+
+  std::optional<positive_int> batch_size = std::nullopt;
+  if (std::optional<std::string> s =
+          cli_get_named_argument(parsed, key_batch_size)) {
+    int value = 0;
+    auto [end, error] =
+        std::from_chars(s->data(), s->data() + s->size(), value);
+    if (error != std::errc{} || end != s->data() + s->size() || value <= 0) {
+      std::cerr << "error: --batch-size must be a positive integer, not " << *s
+                << std::endl;
+      return 1;
+    }
+    batch_size = positive_int{value};
+  }
   //! [utils/cli example]
 
   auto handle_error = [](auto const &result) {
@@ -208,14 +255,16 @@ int main(int argc, char **argv) {
   };
 
   if (dot) {
-    ComputationGraph cg = handle_error(get_model_computation_graph(model_name));
+    ComputationGraph cg =
+        handle_error(get_model_computation_graph(model_name, batch_size));
 
     std::cout << as_dot(cg) << std::endl;
     return 0;
   }
 
   if (preprocessed_dot) {
-    ComputationGraph cg = handle_error(get_model_computation_graph(model_name));
+    ComputationGraph cg =
+        handle_error(get_model_computation_graph(model_name, batch_size));
     std::string rendered =
         render_preprocessed_computation_graph_for_sp_decomposition(cg);
 
@@ -226,11 +275,12 @@ int main(int argc, char **argv) {
   nlohmann::json json_output;
   if (sp_decompositition) {
     JsonSPModelExport model_export =
-        handle_error(get_sp_model_export(model_name));
+        handle_error(get_sp_model_export(model_name, batch_size));
 
     json_output = model_export;
   } else {
-    ComputationGraph cg = handle_error(get_model_computation_graph(model_name));
+    ComputationGraph cg =
+        handle_error(get_model_computation_graph(model_name, batch_size));
 
     json_output = to_v1(cg);
   }
