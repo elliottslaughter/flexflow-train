@@ -1,4 +1,6 @@
 #include "substitutions/unity_substitution_set.h"
+#include "op-attrs/activation.h"
+#include "op-attrs/ops/batch_norm.h"
 #include "pcg/machine_compute_specification.h"
 #include "substitutions/operator_pattern/operator_attribute_constraint.h"
 #include "substitutions/output_graph/output_operator_attrs_assignment.h"
@@ -9,14 +11,14 @@
 #include "utils/nonnegative_int/nonnegative_range.h"
 #include "utils/positive_int/positive_range.h"
 #include "utils/random_utils.h"
-#include "op-attrs/activation.h"
 
 namespace FlexFlow {
 
 std::optional<Substitution>
     get_random_substitution(std::mt19937 &gen,
                             MachineComputeSpecification const &resources) {
-  std::vector<Substitution> substitutions = get_unity_substitution_set(resources);
+  std::vector<Substitution> substitutions =
+      get_unity_substitution_set(resources);
   if (substitutions.empty()) {
     return std::nullopt;
   }
@@ -76,18 +78,32 @@ std::vector<Substitution>
   return substitutions;
 }
 
-std::vector<Substitution>
-    get_expanded_substitution_set(MachineComputeSpecification const &resources) {
+std::vector<Substitution> get_expanded_substitution_set(
+    MachineComputeSpecification const &resources) {
 
-  std::vector<Substitution> substitutions = get_unity_substitution_set(resources);
+  std::vector<Substitution> substitutions =
+      get_unity_substitution_set(resources);
 
   substitutions.push_back(create_fuse_linear_activation(Activation::SILU));
 
-  substitutions.push_back(create_fuse_batch_norm_activation(Activation::RELU));
-  substitutions.push_back(create_fuse_batch_norm_activation(Activation::SIGMOID));
-  substitutions.push_back(create_fuse_batch_norm_activation(Activation::TANH));
-  substitutions.push_back(create_fuse_batch_norm_activation(Activation::GELU));
-  substitutions.push_back(create_fuse_batch_norm_activation(Activation::SILU));
+  // Only the pairs the batch norm kernel can execute, which are the same pairs
+  // perform_operation_fusion folds at execution time. Offering the search one
+  // it cannot run would fail when a cost estimator measures the result.
+  for (Activation activation : {Activation::RELU,
+                                Activation::SIGMOID,
+                                Activation::TANH,
+                                Activation::GELU,
+                                Activation::SILU}) {
+    for (BatchNormMode mode : {BatchNormMode::PER_ACTIVATION,
+                               BatchNormMode::SPATIAL,
+                               BatchNormMode::SPATIAL_PERSISTENT}) {
+      if (batch_norm_supports_fused_activation(activation) &&
+          batch_norm_mode_supports_fused_activation(mode)) {
+        substitutions.push_back(
+            create_fuse_batch_norm_activation(activation, mode));
+      }
+    }
+  }
 
   return substitutions;
 }
@@ -853,7 +869,8 @@ Substitution create_fuse_linear_activation(Activation activation) {
   return b.get_substitution();
 }
 
-Substitution create_fuse_batch_norm_activation(Activation activation) {
+Substitution create_fuse_batch_norm_activation(Activation activation,
+                                               BatchNormMode mode) {
   SubstitutionBuilder b;
 
   auto [p_input, o_input] =
@@ -868,6 +885,8 @@ Substitution create_fuse_batch_norm_activation(Activation activation) {
       op_attr_key_equals(
           OperatorAttributeKey::ACTIVATION,
           OperatorAttributeValue{std::optional<Activation>{std::nullopt}}),
+      op_attr_key_equals(OperatorAttributeKey::BATCH_NORM_MODE,
+                         OperatorAttributeValue{mode}),
   }};
 
   std::string bn_name = "bn";
@@ -895,6 +914,15 @@ Substitution create_fuse_batch_norm_activation(Activation activation) {
   OperatorAttributePattern activation_pattern = OperatorAttributePattern{{
       op_type_equals_constraint(op_type_for_activation(activation)),
   }};
+
+  // An Activation carries no parameters, so a SiLU given a beta cannot be
+  // written as one. Only the form the graph builders produce, with no scalar
+  // at all, is matched.
+  if (activation == Activation::SILU) {
+    activation_pattern.attribute_constraints.insert(op_attr_key_equals(
+        OperatorAttributeKey::SCALAR,
+        OperatorAttributeValue{std::optional<float>{std::nullopt}}));
+  }
 
   std::string activation_name = "activation";
   PatternValue p_activation_output = insert_single_output_pattern(

@@ -39,7 +39,11 @@ static std::pair<parallel_layer_guid_t, MappedOperatorTaskGroup>
 
 SearchResult trivial_search_result_for_cg(ComputationGraph const &cg,
                                           MachineSpaceCoordinate const &mc) {
-  ParallelComputationGraph pcg = pcg_from_computation_graph(cg);
+  return trivial_search_result_for_pcg(pcg_from_computation_graph(cg), mc);
+}
+
+SearchResult trivial_search_result_for_pcg(ParallelComputationGraph const &pcg,
+                                           MachineSpaceCoordinate const &mc) {
   return SearchResult{
       /*pcg=*/pcg,
       /*machine_mapping=*/

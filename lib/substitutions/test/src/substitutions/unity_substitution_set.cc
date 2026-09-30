@@ -219,9 +219,10 @@ TEST_SUITE(FF_TEST_SUITE) {
         /*num_gpus_per_node=*/4_p,
     };
 
-    std::vector<Substitution> result = get_expanded_substitution_set(machine_spec);
+    std::vector<Substitution> result =
+        get_expanded_substitution_set(machine_spec);
 
-    CHECK(result.size() == 254);
+    CHECK(result.size() == 257);
   }
 
   TEST_CASE("create_replicate_linear_combine, use_bias = false") {
@@ -1359,5 +1360,78 @@ TEST_SUITE(FF_TEST_SUITE) {
     }();
 
     CHECK(sub_pcgs_are_isomorphic(result, correct));
+  }
+
+  TEST_CASE("create_fuse_batch_norm_activation") {
+    std::string bn_match = "bn_match";
+    std::string relu_match = "relu_match";
+
+    TensorShape input_shape = TensorShape{
+        TensorDims{
+            FFOrdered{
+                2_p,
+                3_p,
+                4_p,
+                4_p,
+            },
+        },
+        DataType::FLOAT,
+    };
+
+    auto make_pcg = [&](BatchNormMode mode) {
+      ParallelComputationGraphBuilder b;
+      parallel_tensor_guid_t t = b.create_input_tensor(input_shape);
+      t = b.batch_norm(t,
+                       /*affine=*/true,
+                       /*activation=*/std::nullopt,
+                       /*eps=*/1e-5,
+                       /*momentum=*/0.1,
+                       /*mode=*/mode,
+                       /*name=*/bn_match);
+      t = b.relu(t, /*name=*/relu_match);
+
+      return sub_pcg_from_full_pcg(b.pcg);
+    };
+
+    SUBCASE("fuses a batch norm and the activation after it") {
+      Substitution sub = create_fuse_batch_norm_activation(
+          Activation::RELU, BatchNormMode::SPATIAL);
+      SubParallelComputationGraph pcg = make_pcg(BatchNormMode::SPATIAL);
+
+      PCGPatternMatch match =
+          get_only(find_pattern_matches(sub.pcg_pattern, pcg));
+      SubParallelComputationGraph result = apply_substitution(pcg, sub, match);
+
+      SubParallelComputationGraph correct = [&] {
+        ParallelComputationGraphBuilder b;
+        parallel_tensor_guid_t t = b.create_input_tensor(input_shape);
+        t = b.batch_norm(t,
+                         /*affine=*/true,
+                         /*activation=*/Activation::RELU,
+                         /*eps=*/1e-5,
+                         /*momentum=*/0.1,
+                         /*mode=*/BatchNormMode::SPATIAL);
+
+        return sub_pcg_from_full_pcg(b.pcg);
+      }();
+
+      CHECK(sub_pcgs_are_isomorphic(result, correct));
+    }
+
+    SUBCASE("does not match a batch norm in another mode") {
+      Substitution sub = create_fuse_batch_norm_activation(
+          Activation::RELU, BatchNormMode::SPATIAL_PERSISTENT);
+      SubParallelComputationGraph pcg = make_pcg(BatchNormMode::SPATIAL);
+
+      CHECK(find_pattern_matches(sub.pcg_pattern, pcg).empty());
+    }
+
+    SUBCASE("does not match another activation") {
+      Substitution sub = create_fuse_batch_norm_activation(
+          Activation::SIGMOID, BatchNormMode::SPATIAL);
+      SubParallelComputationGraph pcg = make_pcg(BatchNormMode::SPATIAL);
+
+      CHECK(find_pattern_matches(sub.pcg_pattern, pcg).empty());
+    }
   }
 }

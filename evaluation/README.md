@@ -1,11 +1,12 @@
 # Reproducing the evaluation
 
-Three scripts. Each takes no arguments, needs no setup, and builds or fetches
+Four scripts. Each takes no arguments, needs no setup, and builds or fetches
 whatever it needs on first run.
 
 | script | what it answers | runtime |
 |---|---|---|
 | `./validate.sh` | Does FlexFlow compute the same thing as ultralytics? | ~30 min |
+| `./check_fusion.sh` | Does the compiler find the fusions run-model makes? | ~1 min |
 | `./benchmark_flexflow.sh` | How fast is FlexFlow? | ~15 min |
 | `./benchmark_pytorch.sh` | How fast is PyTorch on the same work? | ~25 min |
 
@@ -15,6 +16,12 @@ told otherwise (see [Choosing the model and batch size](#choosing-the-model-and-
 `validate.sh` checks the forward pass layer by layer, the backward pass layer by
 layer, five SGD steps against `torch.optim.SGD`, and the network end to end. It
 prints a PASSED or FAILED line per stage and exits non-zero if any stage fails.
+
+`check_fusion.sh` compiles the model with the unity search, pricing each
+operator by running its kernels on this GPU, and checks that the search chooses
+on its own every batch norm + activation fusion that run-model would otherwise
+make at execution time (159 batch norm + SiLU pairs in YOLOv10x). It prints
+PASSED or FAILED and exits non-zero on failure.
 
 The two benchmarks report the time for 500 training iterations, averaged over 3
 runs. Startup is excluded by timing a short run and a long one and subtracting,

@@ -12,6 +12,13 @@ MappedParallelComputationGraph
 SearchResult trivial_search_result_for_cg(ComputationGraph const &,
                                           MachineSpaceCoordinate const &);
 
+/**
+ * \brief \p pcg as it stands, with every operator placed on the one device \p
+ * mc.
+ */
+SearchResult trivial_search_result_for_pcg(ParallelComputationGraph const &pcg,
+                                           MachineSpaceCoordinate const &mc);
+
 std::string format_as(SearchResult const &);
 std::ostream &operator<<(std::ostream &, SearchResult const &);
 

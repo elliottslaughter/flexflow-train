@@ -25,6 +25,7 @@
 #include "utils/containers/transform.h"
 #include "utils/optional.h"
 #include "utils/positive_int/positive_int.h"
+#include <cstdlib>
 #include <fstream>
 #include <optional>
 
@@ -50,8 +51,7 @@ static std::pair<parallel_layer_guid_t, MappedOperatorTaskGroup>
 }
 
 static MappedParallelComputationGraph
-    lift_cg_to_mpcg_for_single_device(ComputationGraph const &cg) {
-  ParallelComputationGraph pcg = pcg_from_computation_graph(cg);
+    lift_pcg_to_mpcg_for_single_device(ParallelComputationGraph const &pcg) {
   std::map<parallel_layer_guid_t, MappedOperatorTaskGroup>
       mapped_op_task_groups = map_from_pairs(
           transform(pcg_get_invocation_info_set(pcg),
@@ -79,8 +79,17 @@ static std::optional<ManagedPerDeviceFFHandle>
     return std::nullopt;
   }
 
+  // The workspace budget decides which convolution algorithms are eligible, so
+  // it has to be the one run-model will execute under or the costs measured
+  // here are for kernels that will never run. Same variable, same default.
+  char const *workspace_mb = std::getenv("FF_WORKSPACE_MB");
+  size_t work_space_size =
+      static_cast<size_t>(
+          std::stoul(workspace_mb != nullptr ? workspace_mb : "512")) *
+      1024 * 1024;
+
   return initialize_single_gpu_handle(
-      /*workSpaceSize=*/1024 * 1024,
+      /*workSpaceSize=*/work_space_size,
       /*allowTensorOpMathConversion=*/true);
 }
 
@@ -127,9 +136,13 @@ static AlgorithmConfig
     return AlgorithmConfig{
         DataParallelismConfig{/*degree=*/degree.int_from_positive_int()}};
   } else if (strategy == "unity") {
-    // TODO: pick better defaults
-    return AlgorithmConfig{
-        UnitySearchConfig{/*alpha=*/0.5, /*budget=*/100, /*max_num_ops=*/100}};
+    // The search stops by itself once no substitution improves the graph, so
+    // the budget is only a backstop. It counts candidates tried, and a model
+    // offers one per match: YOLOv10x alone has 159 fusible batch norms, and
+    // several times that many matches that do not pay off.
+    // TODO: pick better defaults for alpha and max_num_ops, which are unused
+    return AlgorithmConfig{UnitySearchConfig{
+        /*alpha=*/0.5, /*budget=*/100000, /*max_num_ops=*/100}};
   } else if (strategy == "mcmc") {
     // TODO: pick better defaults
     return AlgorithmConfig{
@@ -241,7 +254,7 @@ int main(int argc, char **argv) {
 
   MappedParallelComputationGraph mpcg = [&]() {
     if (strategy == "passthrough") {
-      return lift_cg_to_mpcg_for_single_device(cg);
+      return lift_pcg_to_mpcg_for_single_device(pcg_from_computation_graph(cg));
     } else {
       // Need to root this on the stack so it stays alive for the whole session
       std::optional<ManagedPerDeviceFFHandle> managed_handle =
@@ -254,6 +267,12 @@ int main(int argc, char **argv) {
           select_compiler_algorithm(strategy, cpu, machine_specification);
       SearchResult result =
           optimize(cg, machine_specification, estimator, algorithm);
+      if (strategy == "unity") {
+        // unity places every operator on one device (see graph_optimize), and
+        // lifting its graph directly, as passthrough does, does not need the
+        // operator task spaces that most operators do not have yet.
+        return lift_pcg_to_mpcg_for_single_device(result.pcg);
+      }
       return get_mapped_pcg_from_search_result(result);
     }
   }();
