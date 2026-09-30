@@ -1,0 +1,13 @@
+ff_add_executable(
+  NAME
+    mocha-her
+  SRC_PATTERNS
+    src/*.cc
+  PRIVATE_INCLUDE
+    include/
+  DEPS
+    compiler
+    kernels
+    local-execution
+    models
+)

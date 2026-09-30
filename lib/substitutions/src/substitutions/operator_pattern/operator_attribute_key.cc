@@ -54,6 +54,8 @@ std::vector<OperatorAttributeKey> all_operator_attribute_keys() {
       OperatorAttributeKey::SHOULD_BROADCAST_RHS,
       OperatorAttributeKey::DIM,
       OperatorAttributeKey::ELEMENTWISE_AFFINE,
+      OperatorAttributeKey::AFFINE,
+      OperatorAttributeKey::MOMENTUM,
       OperatorAttributeKey::REGULARIZER,
       OperatorAttributeKey::SHAPE,
       OperatorAttributeKey::SPLITS,
@@ -62,6 +64,7 @@ std::vector<OperatorAttributeKey> all_operator_attribute_keys() {
       OperatorAttributeKey::COMBINE_DIM,
       OperatorAttributeKey::COMBINE_DEGREE,
       OperatorAttributeKey::NUM_INPUTS,
+      OperatorAttributeKey::BATCH_NORM_MODE,
   };
 }
 

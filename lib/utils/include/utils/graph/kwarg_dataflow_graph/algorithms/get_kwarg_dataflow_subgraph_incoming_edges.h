@@ -15,12 +15,12 @@ std::set<KwargDataflowEdge<SlotName>>
         std::set<Node> const &subgraph) {
   std::set<Node> all_nodes = get_nodes(g);
   query_set<Node> src_query =
-      query_set<Node>::match_values_in(set_of(set_minus(all_nodes, subgraph)));
+      query_set<Node>::match_values_in(set_minus(all_nodes, subgraph));
 
   KwargDataflowEdgeQuery<SlotName> query = KwargDataflowEdgeQuery<SlotName>{
       /*src_nodes=*/src_query,
       /*src_slots=*/query_set<SlotName>::matchall(),
-      /*dst_nodes=*/query_set<Node>::match_values_in(set_of(subgraph)),
+      /*dst_nodes=*/query_set<Node>::match_values_in(subgraph),
       /*dst_slots=*/query_set<SlotName>::matchall(),
   };
 

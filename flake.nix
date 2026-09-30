@@ -18,7 +18,7 @@
     flake-utils.url = "github:numtide/flake-utils";
 
     proj-repo = {
-      url = "git+https://github.com/elliottslaughter/proj.git?ref=refs/heads/update-nix&rev=5a69f113bb1ae74762319c135a44208c58fd0fad";
+      url = "git+https://github.com/elliottslaughter/proj.git?ref=refs/heads/update-nix&rev=5f50c6f0cc3267f049ab296de11375d421b02f1f";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };

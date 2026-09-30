@@ -29,10 +29,10 @@ public:
   std::set<OpenKwargDataflowEdge<GraphInputName, SlotName>>
       query_edges(OpenKwargDataflowEdgeQuery<GraphInputName, SlotName> const &q)
           const override {
+
     return transform(this->g.query_edges(q.standard_edge_query),
                      [](KwargDataflowEdge<SlotName> const &e) {
-                       return OpenKwargDataflowEdge<GraphInputName, SlotName>{
-                           e};
+                       return OpenKwargDataflowEdge<GraphInputName, SlotName>{e};
                      });
   }
 

@@ -1,7 +1,6 @@
 #include "compiler/machine_mapping/get_tensor_set_movement_across_split.h"
 #include "compiler/machine_mapping/machine_view.h"
 #include "compiler/machine_mapping/transitive_reduced_pcg.h"
-#include "internal/cost_estimator_for_test.h"
 #include "op-attrs/parallel_tensor_shape.h"
 #include "pcg/parallel_computation_graph/parallel_computation_graph.h"
 #include "pcg/parallel_computation_graph/parallel_computation_graph_builder.h"

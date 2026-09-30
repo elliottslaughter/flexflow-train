@@ -13,8 +13,8 @@ TensorAttributeValue eval_list_size(ParallelTensorAttrs const &attrs,
       [](std::vector<nonnegative_int> const &v) -> TensorAttributeValue {
         return TensorAttributeValue{num_elements(v)};
       },
-      [](auto &&) -> TensorAttributeValue {
-        throw mk_runtime_error("Invalid operand");
+      [](auto const &x) -> TensorAttributeValue {
+        PANIC(fmt::format("Invalid operand {}", x));
       },
   });
 }

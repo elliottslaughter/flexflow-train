@@ -10,10 +10,30 @@
 
 namespace FlexFlow {
 
+std::vector<ParallelComputationGraph>
+    all_pcgs_obtained_by_applying_a_substitution(
+        ParallelComputationGraph const &pcg,
+        std::vector<Substitution> const &substitutions);
+
 SearchResult graph_optimize(ParallelComputationGraph &pcg,
                             RuntimeOnlyCostEstimator const &cost_estimator,
                             MachineComputeSpecification const &resources,
-                            UnitySearchConfig const &search_config);
+                            UnitySearchConfig const &search_config,
+                            std::vector<Substitution> const &substitutions);
+
+std::pair<
+  milliseconds_t,
+  ParallelComputationGraph
+> her_graph_optimize(
+    ParallelComputationGraph &pcg,
+    RuntimeOnlyCostEstimator const &cost_estimator,
+    MachineComputeSpecification const &resources,
+    UnitySearchConfig const &search_config,
+    std::vector<Substitution> const &substitutions,
+    std::optional<std::function<void(int)>> const &new_candidates_hook = std::nullopt,
+    std::optional<std::function<void(int, int, milliseconds_t)>> const &start_candidate_hook = std::nullopt,
+    std::optional<std::function<void(int, int, milliseconds_t)>> const &finished_candidate_hook = std::nullopt,
+    std::optional<std::function<void(int, int, milliseconds_t, milliseconds_t)>> const &new_best_hook = std::nullopt);
 
 } // namespace FlexFlow
 

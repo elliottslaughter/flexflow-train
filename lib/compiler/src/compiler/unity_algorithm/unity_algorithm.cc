@@ -24,6 +24,10 @@
 #include "utils/deduplicated_priority_queue.h"
 #include "utils/graph/node/algorithms.h"
 #include "utils/optional.h"
+#include "compiler/machine_mapping/machine_view.h"
+#include "utils/containers/foldl.h"
+#include "utils/deduplicated_queue.h"
+#include "utils/containers/enumerate.h"
 
 namespace FlexFlow {
 
@@ -51,12 +55,34 @@ std::vector<ParallelComputationGraph>
 SearchResult graph_optimize(ParallelComputationGraph &pcg,
                             RuntimeOnlyCostEstimator const &cost_estimator,
                             MachineComputeSpecification const &resources,
-                            UnitySearchConfig const &search_config) {
+                            UnitySearchConfig const &search_config,
+                            std::vector<Substitution> const &substitutions) {
+  NOT_IMPLEMENTED();
+}
 
-  std::vector<Substitution> substitutions = get_substitution_set(resources);
-
+std::pair<
+  milliseconds_t,
+  ParallelComputationGraph
+> her_graph_optimize(
+    ParallelComputationGraph &pcg,
+    RuntimeOnlyCostEstimator const &cost_estimator,
+    MachineComputeSpecification const &resources,
+    UnitySearchConfig const &search_config,
+    std::vector<Substitution> const &substitutions,
+    std::optional<std::function<void(int)>> const &new_candidates_hook,
+    std::optional<std::function<void(int, int, milliseconds_t)>> const &start_candidate_hook,
+    std::optional<std::function<void(int, int, milliseconds_t)>> const &finished_candidate_hook,
+    std::optional<std::function<void(int, int, milliseconds_t, milliseconds_t)>> const &new_best_hook)
+{
   MachineMappingCache cached_subgraph_costs = empty_machine_mapping_cache();
-  DeduplicatedPriorityQueue<GraphOptimizeState> candidates;
+  deduplicated_queue<std::pair<int, PCGPatternMatch>> candidates;
+
+  MachineSpaceCoordinate device = MachineSpaceCoordinate{
+    /*node_idx=*/0_n,
+    /*device_idx=*/0_n,
+  };
+
+  MachineView machine_view = make_single_device_machine_view(device);
 
   MachineMappingContext context = MachineMappingContext{
       /*cost_estimator=*/cost_estimator,
@@ -71,77 +97,128 @@ SearchResult graph_optimize(ParallelComputationGraph &pcg,
       },
   };
 
-  auto optimize_pcg = [&](ParallelComputationGraph const &pcg)
-      -> std::pair<GraphOptimizeState, std::optional<MachineMapping>> {
-    PCGBinarySPDecomposition sp_decomp =
-        expect(get_pcg_balanced_binary_sp_decomposition(pcg),
-               "Failed to get SP decomposition of PCG");
+  auto compute_optimal_cost = [&](SubParallelComputationGraph const &spcg)
+      -> milliseconds_t {
 
-    MachineMappingProblemTree problem_tree =
-        get_machine_mapping_problem_tree(pcg, sp_decomp);
-    MachineMappingConstraints constraints =
-        get_unconstrained_solution_for_layers(get_all_leaf_paths(problem_tree));
-
-    MachineMappingResult mm_result =
-        get_optimal_machine_mapping(cached_subgraph_costs,
-                                    context,
-                                    problem_tree,
-                                    compute_slice_from_specification(resources),
-                                    constraints);
+    ParallelComputationGraph pcg = pcg_from_sub_pcg_by_dropping_inputs(spcg);
+    milliseconds_t runtime = foldl(
+        pcg_get_parallel_layers(pcg),
+        milliseconds_t{0.0f},
+        [&](milliseconds_t accum, parallel_layer_guid_t l) -> milliseconds_t {
+          UnmappedRuntimeOnlyOpCostEstimateKey unmapped_cost_key = 
+            get_unmapped_runtime_only_op_cost_estimate_key_for_layer(pcg, l);
+          RuntimeOnlyOpCostEstimateKey cost_key = 
+            map_unmapped_runtime_only_op_cost_estimate_key(unmapped_cost_key, machine_view);
+          RuntimeOnlyOpCostMetrics cost_metrics = 
+            context.cost_estimator.estimate_cost(cost_key);
+          
+          return accum + cost_metrics.forward_runtime + cost_metrics.backward_runtime;
+        });
 
     return {
-        GraphOptimizeState{
-            /*pcg=*/pcg,
-            /*runtime=*/get_runtime_cost(mm_result),
-        },
-        get_machine_mapping_from_machine_mapping_result(sp_decomp, mm_result),
+      runtime,
     };
   };
 
-  GraphOptimizeState best_state = optimize_pcg(pcg).first;
+  SubParallelComputationGraph best = sub_pcg_from_full_pcg(pcg);
+  milliseconds_t best_cost = compute_optimal_cost(best);
+
+  // GraphOptimizeState best_state = optimize_pcg(pcg).first;
+  /*
   candidates.push(best_state);
+  */
 
-  for (int iteration = 0;
-       !candidates.empty() && iteration < search_config.budget;
-       ++iteration) {
-    GraphOptimizeState current_state = candidates.top();
+  auto generate_candidates = [&]() {
+    for (auto const &[i, substitution] : enumerate(substitutions)) {
+      for (PCGPatternMatch const &match 
+           : find_pattern_matches(substitution.pcg_pattern, best)) {
+        candidates.push(std::pair{i.int_from_nonnegative_int(), match});
+      }
+    }
+  };
+
+  for (int iteration = 0; iteration < search_config.budget; ++iteration) {
+    if (candidates.empty()) {
+      generate_candidates();
+
+      if (candidates.empty()) {
+        break;
+      }
+
+      if (new_candidates_hook.has_value()) {
+        new_candidates_hook.value()(candidates.size());
+      }
+    }
+
+    auto [sub_idx, match] = candidates.front();
     candidates.pop();
-
-    if (current_state < best_state) {
-      best_state = current_state;
-    } else if (current_state.runtime >
-               best_state.runtime * search_config.alpha) {
-      continue;
+    if (start_candidate_hook.has_value()) {
+      start_candidate_hook.value()(iteration, candidates.size(), best_cost);
+      // std::cout << "trying candidate (" << candidates.size() << " remaining)" << std::endl;
     }
 
-    for (ParallelComputationGraph const &new_pcg :
-         all_pcgs_obtained_by_applying_a_substitution(current_state.pcg,
-                                                      substitutions)) {
+    SubParallelComputationGraph curr =
+      apply_substitution(best, substitutions.at(sub_idx), match);
 
-      std::optional<GraphOptimizeState> new_pcg_optimize_result =
-          optimize_pcg(new_pcg).first;
+    milliseconds_t curr_cost = compute_optimal_cost(curr);
 
-      if (new_pcg_optimize_result == std::nullopt) {
-        continue;
+
+    if (curr_cost < best_cost) {
+      if (new_best_hook.has_value()) {
+        new_best_hook.value()(iteration, candidates.size(), best_cost, curr_cost);
       }
 
-      GraphOptimizeState new_state = new_pcg_optimize_result.value();
-      if (new_state.runtime <= best_state.runtime * search_config.alpha &&
-          get_nodes(new_pcg.raw_graph).size() <= search_config.max_num_ops) {
-        candidates.push(new_state);
-      }
+      best = curr;
+      best_cost = curr_cost; 
+      
+      // std::cout << "found new best: " << best_cost << std::endl;
     }
+
+    if (finished_candidate_hook.has_value()) {
+      finished_candidate_hook.value()(iteration, candidates.size(), best_cost);
+    }
+      
+    // if (current_state < best_state) {
+    //   best_state = current_state;
+    // } else if (current_state.runtime >
+    //            best_state.runtime * search_config.alpha) {
+    //   continue;
+    // }
+
+    // for (ParallelComputationGraph const &new_pcg :
+    //      all_pcgs_obtained_by_applying_a_substitution(current_state.pcg,
+    //                                                   substitutions)) {
+
+    //   PANIC();
+
+    //   std::optional<GraphOptimizeState> new_pcg_optimize_result =
+    //       optimize_pcg(new_pcg).first;
+
+    //   if (new_pcg_optimize_result == std::nullopt) {
+    //     continue;
+    //   }
+
+    //   GraphOptimizeState new_state = new_pcg_optimize_result.value();
+    //   if (new_state.runtime <= best_state.runtime * search_config.alpha &&
+    //       get_nodes(new_pcg.raw_graph).size() <= search_config.max_num_ops) {
+    //     candidates.push(new_state);
+    //   }
+    // }
   }
 
-  std::optional<MachineMapping> best_mapping =
-      optimize_pcg(best_state.pcg).second;
-
-  ASSERT(best_mapping != std::nullopt, "Failed to find any solutions");
-
-  return SearchResult{
-      /*pcg=*/best_state.pcg,
-      /*machine_mapping=*/best_mapping.value(),
+  return {
+    best_cost,
+    pcg_from_sub_pcg_by_dropping_inputs(best),
   };
+  //  std::optional<MachineMapping> best_mapping =
+  //      optimize_pcg(best_state.pcg).second;
+
+  //  ASSERT(best_mapping != std::nullopt, "Failed to find any solutions");
+
+  // return SearchResult{
+  //     /*pcg=*/best_state.pcg,
+  //     /*machine_mapping=*/best_mapping.value(),
+  // };
 }
 
 } // namespace FlexFlow

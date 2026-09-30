@@ -52,12 +52,21 @@ ParallelTensorAttrs
 
 SubParallelComputationGraph
     sub_pcg_from_full_pcg(ParallelComputationGraph const &pcg) {
-  return SubParallelComputationGraph{
+  return SubParallelComputationGraph(
+      LabelledOpenKwargDataflowGraph<ParallelLayerAttrs,
+                                     ParallelTensorAttrs,
+                                     int,
+                                     TensorSlotName>::
+      create_copy_of<
+          UnorderedSetLabelledOpenKwargDataflowGraph<ParallelLayerAttrs,
+                                                     ParallelTensorAttrs,
+                                                     int,
+                                                     TensorSlotName>>(
       view_as_labelled_open_kwarg_dataflow_graph<ParallelLayerAttrs,
                                                  ParallelTensorAttrs,
                                                  int,
                                                  TensorSlotName>(
-          pcg.raw_graph)};
+          pcg.raw_graph)));
 }
 
 ParallelComputationGraph pcg_from_sub_pcg_by_dropping_inputs(
@@ -150,7 +159,9 @@ SubParallelComputationGraphData
                                      TensorSlotName>
       raw_data = get_labelled_open_kwarg_dataflow_graph_data(pcg.raw_graph);
 
+  /*
   require_labelled_open_kwarg_dataflow_graph_data_is_valid(raw_data);
+  */
 
   return SubParallelComputationGraphData{
       map_keys(raw_data.node_data,

@@ -8,6 +8,7 @@
 #include "utils/graph/open_kwarg_dataflow_graph/algorithms/open_kwarg_dataflow_graph_data.h"
 #include "utils/graph/open_kwarg_dataflow_graph/open_kwarg_dataflow_edge_query.h"
 #include "utils/graph/open_kwarg_dataflow_graph/open_kwarg_dataflow_graph_view.h"
+#include "utils/graph/instances/unordered_set_open_kwarg_dataflow_graph.h"
 
 namespace FlexFlow {
 
@@ -62,7 +63,7 @@ OpenKwargDataflowGraphView<GraphInputName, SlotName>
   require_open_kwarg_dataflow_graph_data_is_valid(data);
 
   return OpenKwargDataflowGraphView<GraphInputName, SlotName>::template create<
-      ViewFromOpenKwargDataflowGraphData<GraphInputName, SlotName>>(data);
+      UnorderedSetOpenKwargDataflowGraph<GraphInputName, SlotName>>(data);
 }
 
 } // namespace FlexFlow

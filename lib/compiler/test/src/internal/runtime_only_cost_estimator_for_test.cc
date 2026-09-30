@@ -4,8 +4,8 @@
 #include "compiler/cost_estimator/op_cost_metrics.dtg.h"
 #include "compiler/cost_estimator/op_cost_metrics.h"
 #include "compiler/cost_estimator/runtime_only_cost_estimator_from_cost_estimator.h"
-#include "internal/cost_estimator_for_test.h"
 #include "utils/containers/contains_key.h"
+#include "compiler/cost_estimator/fake_cost_estimator.h"
 
 namespace FlexFlow {
 

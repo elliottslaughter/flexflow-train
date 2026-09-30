@@ -20,6 +20,8 @@
 #include "utils/overload.h"
 #include <libassert/assert.hpp>
 #include <memory>
+#include "utils/graph/open_kwarg_dataflow_graph/algorithms/get_open_kwarg_dataflow_graph_data.h"
+#include "utils/graph/open_kwarg_dataflow_graph/open_kwarg_dataflow_edge_query.dtg.h"
 
 namespace FlexFlow {
 
@@ -120,15 +122,50 @@ bool pattern_matches_subgraph_under(
            KwargDataflowGraphInput<int>> const
         &full_graph_values_to_subgraph_inputs,
     UnlabelledKwargDataflowGraphPatternMatch const &match,
-    MatchAdditionalCriterion const &additional_criterion) {
+    MatchAdditionalCriterion const &additional_criterion) 
+{
   SubgraphConcreteFromPattern concrete_from_pattern{
       match, full_graph_values_to_subgraph_inputs};
+
+  {
+    std::set<OpenKwargDataflowEdge<int, TensorSlotName>> concrete_edges =
+        get_all_open_kwarg_dataflow_edges(subgraph);
+
+    std::set<PatternEdge> pattern_edges = get_pattern_edges(pattern);
+
+    if (concrete_edges.size() != pattern_edges.size()) {
+      return false;
+    }
+
+    for (PatternEdge const &p_e : pattern_edges) {
+      if (!contains(concrete_edges, concrete_from_pattern(p_e))) {
+        return false;
+      }
+    }
+  }
+
+  /*
+  std::set<OpenKwargDataflowEdge<int, TensorSlotName>>
+      concrete_edge_from_match =
+          transform(get_pattern_edges(pattern),
+                    [&](PatternEdge const &e)
+                        -> OpenKwargDataflowEdge<int, TensorSlotName> {
+                      return concrete_from_pattern(e);
+                    });
+  */
+
+  /*
+  if (concrete_edges != concrete_edge_from_match) {
+    return false;
+  }
+  */
 
   std::set<Node> concrete_nodes = get_nodes(subgraph);
   std::set<Node> concrete_nodes_from_match =
       transform(get_pattern_nodes(pattern), concrete_from_pattern);
 
   if (concrete_nodes != concrete_nodes_from_match) {
+    std::cout << "failed at c" << std::endl;
     return false;
   }
 
@@ -137,20 +174,6 @@ bool pattern_matches_subgraph_under(
             pattern_node, concrete_from_pattern(pattern_node))) {
       return false;
     }
-  }
-
-  std::set<OpenKwargDataflowEdge<int, TensorSlotName>> concrete_edges =
-      get_all_open_kwarg_dataflow_edges(subgraph);
-  std::set<OpenKwargDataflowEdge<int, TensorSlotName>>
-      concrete_edge_from_match =
-          transform(get_pattern_edges(pattern),
-                    [&](PatternEdge const &e)
-                        -> OpenKwargDataflowEdge<int, TensorSlotName> {
-                      return concrete_from_pattern(e);
-                    });
-
-  if (concrete_edges != concrete_edge_from_match) {
-    return false;
   }
 
   std::set<OpenKwargDataflowValue<int, TensorSlotName>> concrete_values =
@@ -181,8 +204,22 @@ bool unlabelled_pattern_does_match(
     UnlabelledGraphPattern const &pattern,
     OpenKwargDataflowGraphView<int, TensorSlotName> const &graph,
     UnlabelledKwargDataflowGraphPatternMatch const &match,
-    MatchAdditionalCriterion const &additional_criterion) {
+    MatchAdditionalCriterion const &additional_criterion)
+{
+  return unlabelled_pattern_does_match(
+    pattern, graph, match, additional_criterion, std::set<StandardPatternEdge>{}
+  );
+}
 
+bool unlabelled_pattern_does_match(
+    UnlabelledGraphPattern const &pattern,
+    OpenKwargDataflowGraphView<int, TensorSlotName> const &graph,
+    UnlabelledKwargDataflowGraphPatternMatch const &match,
+    MatchAdditionalCriterion const &additional_criterion,
+    std::set<StandardPatternEdge> const &hint_edges) 
+{
+
+  /*
   std::set<OpenKwargDataflowValue<int, TensorSlotName>>
       matched_by_pattern_inputs = set_of(values(match.input_assignment));
 
@@ -192,12 +229,49 @@ bool unlabelled_pattern_does_match(
   ASSERT(keys(match.input_assignment) == get_pattern_inputs(pattern));
   ASSERT(is_subseteq_of(matched_by_pattern_inputs,
                         get_all_open_kwarg_dataflow_values(graph)));
+  */
+
+  std::set<Node> subgraph_nodes = match.node_assignment.right_values();
+
+  OpenKwargDataflowEdgeQuery<int, TensorSlotName>
+      subgraph_interior_edges_query = OpenKwargDataflowEdgeQuery<int, TensorSlotName>{
+          KwargDataflowInputEdgeQuery<int, TensorSlotName>{
+              /*srcs=*/query_set<int>::match_none(),
+              /*dst_nodes=*/query_set<Node>::match_none(),
+              /*dst_slots=*/query_set<TensorSlotName>::match_none(),
+          },
+          KwargDataflowEdgeQuery<TensorSlotName>{
+              /*srcs=*/query_set<Node>::match_values_in(subgraph_nodes),
+              /*src_slots=*/query_set<TensorSlotName>::matchall(),
+              /*dsts=*/query_set<Node>::match_values_in(subgraph_nodes),
+              /*dst_slots=*/query_set<TensorSlotName>::matchall(),
+          },
+      };
+
+  std::set<KwargDataflowEdge<TensorSlotName>>
+      subgraph_interior_edges =
+      transform(
+          graph.query_edges(subgraph_interior_edges_query),
+          [](OpenKwargDataflowEdge<int, TensorSlotName> const &e) {
+            return e.require_internal_edge();
+          });
+
+  for (StandardPatternEdge const &e : hint_edges) {
+    KwargDataflowEdge<TensorSlotName> concrete_edge = e.raw_edge;
+    concrete_edge.src.node = match.node_assignment.at_l(PatternNode{concrete_edge.src.node});
+    concrete_edge.dst.node = match.node_assignment.at_l(PatternNode{concrete_edge.dst.node});
+
+    if (!contains(subgraph_interior_edges, concrete_edge)) {
+      return false;
+    }
+  }
 
   OpenKwargDataflowSubgraphResult<int, TensorSlotName> subgraph_result =
       subgraph_matched(graph, match);
   OpenKwargDataflowGraphView<int, TensorSlotName> matched_subgraph =
       subgraph_result.graph;
 
+  /*
   std::set<OpenKwargDataflowValue<int, TensorSlotName>>
       full_values_split_by_subgraph =
           left_entries(subgraph_result.full_graph_values_to_subgraph_inputs);
@@ -207,6 +281,7 @@ bool unlabelled_pattern_does_match(
                         get_all_open_kwarg_dataflow_values(graph)),
          full_values_split_by_subgraph,
          get_all_open_kwarg_dataflow_values(graph));
+  */
 
   MatchAdditionalCriterion through_subgraph_operation =
       MatchAdditionalCriterion{

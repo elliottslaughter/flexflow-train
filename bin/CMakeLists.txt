@@ -21,3 +21,7 @@ endif()
 if(FF_BUILD_BIN_RUN_MODEL)
   add_subdirectory(run-model)
 endif()
+
+if(FF_BUILD_BIN_MOCHA_HER)
+  add_subdirectory(mocha-her)
+endif()

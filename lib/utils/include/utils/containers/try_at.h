@@ -10,8 +10,9 @@ namespace FlexFlow {
 
 template <typename K, typename V>
 std::optional<V> try_at(std::unordered_map<K, V> const &m, K const &k) {
-  if (contains_key(m, k)) {
-    return m.at(k);
+  auto it = m.find(k);
+  if (it != m.cend()) {
+    return it->second;
   } else {
     return std::nullopt;
   }

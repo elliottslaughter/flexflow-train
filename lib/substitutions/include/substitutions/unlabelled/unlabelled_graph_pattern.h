@@ -7,6 +7,7 @@
 #include "substitutions/unlabelled/pattern_value.dtg.h"
 #include "substitutions/unlabelled/unlabelled_graph_pattern.dtg.h"
 #include "substitutions/unlabelled/unlabelled_graph_pattern_subgraph_result.dtg.h"
+#include "substitutions/unlabelled/pattern_split.dtg.h"
 
 namespace FlexFlow {
 
@@ -18,6 +19,11 @@ std::vector<PatternNode>
     get_topological_ordering(UnlabelledGraphPattern const &);
 
 std::set<PatternInput> get_pattern_inputs(UnlabelledGraphPattern const &);
+
+nonnegative_int get_num_pattern_edges(UnlabelledGraphPattern const &);
+
+std::set<StandardPatternEdge> get_pattern_edges_across_topological_split(UnlabelledGraphPattern const &,
+                                                                         PatternSplit const &);
 
 std::set<PatternEdge> get_pattern_edges(UnlabelledGraphPattern const &);
 

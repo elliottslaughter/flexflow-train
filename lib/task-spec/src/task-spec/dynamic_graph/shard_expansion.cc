@@ -28,6 +28,7 @@
 #include "utils/containers/set_of.h"
 #include "utils/containers/transform.h"
 #include "utils/optional.h"
+#include "utils/containers/generate_map.h"
 
 namespace FlexFlow {
 

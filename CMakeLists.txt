@@ -51,6 +51,7 @@ option(FF_BUILD_ARG_PARSER "build command line argument parser" OFF)
 option(FF_BUILD_BIN_COMPILE_MODEL "build compile-model binary" ON)
 option(FF_BUILD_BIN_EXPORT_MODEL_ARCH "build export-model-arch utility" ON)
 option(FF_BUILD_BIN_RUN_MODEL "build run-model binary" ON)
+option(FF_BUILD_BIN_MOCHA_HER "build mocha-her binary" ON)
 
 if (FF_USE_CODE_COVERAGE)
   include(CodeCoverage)

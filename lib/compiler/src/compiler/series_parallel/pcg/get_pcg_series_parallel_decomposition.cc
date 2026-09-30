@@ -5,6 +5,7 @@
 #include "utils/graph/digraph/algorithms/materialize_digraph_view.h"
 #include "utils/graph/instances/adjacency_digraph.h"
 #include "utils/graph/series_parallel/get_series_parallel_decomposition.h"
+#include "utils/graph/series_parallel/sp_ization/naive_stratum_sync.h"
 
 namespace FlexFlow {
 
@@ -74,7 +75,7 @@ std::optional<SeriesParallelDecomposition>
     return digraph;
   }();
 
-  return get_series_parallel_decomposition(preprocessed_digraph);
+  return naive_stratum_sync_sp_ization(preprocessed_digraph);
 }
 
 } // namespace FlexFlow

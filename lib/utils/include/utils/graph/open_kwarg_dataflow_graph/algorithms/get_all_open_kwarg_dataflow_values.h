@@ -12,6 +12,7 @@ template <typename GraphInputName, typename SlotName>
 std::set<OpenKwargDataflowValue<GraphInputName, SlotName>>
     get_all_open_kwarg_dataflow_values(
         OpenKwargDataflowGraphView<GraphInputName, SlotName> const &g) {
+
   std::set<KwargDataflowOutput<SlotName>> internal_values =
       get_all_kwarg_dataflow_outputs(g);
 

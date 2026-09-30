@@ -9,4 +9,6 @@ using V = value_type<1>;
 
 template std::set<K> keys(std::map<K, V> const &);
 
+template keys_container<K, V> lazy_keys(std::map<K, V> const &);
+
 } // namespace FlexFlow

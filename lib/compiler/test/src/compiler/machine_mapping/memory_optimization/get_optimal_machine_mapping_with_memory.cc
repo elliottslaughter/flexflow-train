@@ -6,7 +6,6 @@
 #include "compiler/machine_mapping/machine_mapping_problem_tree/unmapped_op_cost_estimate_key.h"
 #include "compiler/machine_mapping/machine_view.h"
 #include "compiler/machine_mapping/memory_optimization/machine_mapping_with_memory_cache.h"
-#include "internal/cost_estimator_for_test.h"
 #include "op-attrs/parallel_tensor_shape.h"
 #include "op-attrs/task_space_coordinate.h"
 #include "pcg/parallel_computation_graph/parallel_computation_graph_builder.h"
@@ -15,6 +14,7 @@
 #include "utils/full_binary_tree/binary_tree_path.h"
 #include "utils/nonnegative_int/nonnegative_int.h"
 #include <doctest/doctest.h>
+#include "compiler/cost_estimator/fake_cost_estimator.h"
 
 using namespace FlexFlow;
 

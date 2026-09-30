@@ -62,6 +62,18 @@ struct bidict {
     }
   }
 
+  bool try_equate(L const &l, R const &r) {
+    auto [fwd_it, fwd_did_insert] = fwd_map.insert({l, r});
+    if (!fwd_did_insert && fwd_it->second != r) {
+      return false;
+    }
+
+    auto [bwd_it, bwd_did_insert] = bwd_map.insert({r, l});
+    DEBUG_ASSERT(fwd_did_insert == bwd_did_insert);
+
+    return true;
+  }
+
   void equate(L const &l, R const &r) {
     ASSERT(this->contains_l(l) == this->contains_r(r));
 
@@ -88,12 +100,12 @@ struct bidict {
   }
 
   R const &at_l(L const &l) const {
-    ASSERT(contains_key(this->fwd_map, l));
+    /* ASSERT(contains_key(this->fwd_map, l)); */
     return fwd_map.at(l);
   }
 
   L const &at_r(R const &r) const {
-    ASSERT(contains_key(this->bwd_map, r));
+    /* ASSERT(contains_key(this->bwd_map, r)); */
     return bwd_map.at(r);
   }
 

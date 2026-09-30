@@ -1,4 +1,4 @@
-#include "./cost_estimator_for_test.h"
+#include "compiler/cost_estimator/fake_cost_estimator.h"
 #include "compiler/cost_estimator/op_cost_metrics.dtg.h"
 #include "compiler/machine_mapping/abstracted_tensor_set_movement/abstracted_tensor_set_movement.h"
 #include "compiler/machine_mapping/machine_mapping_problem_tree/unmapped_op_cost_estimate_key.h"

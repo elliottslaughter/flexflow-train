@@ -4,14 +4,19 @@
 #include "pcg/machine_compute_specification.dtg.h"
 #include "substitutions/substitution.dtg.h"
 #include "utils/fmt/vector.h"
+#include <random>
 
 namespace FlexFlow {
 
 std::optional<Substitution>
-    get_random_substitution(MachineComputeSpecification const &resources);
+    get_random_substitution(std::mt19937 &,
+                            MachineComputeSpecification const &resources);
 
 std::vector<Substitution>
-    get_substitution_set(MachineComputeSpecification const &resources);
+    get_unity_substitution_set(MachineComputeSpecification const &resources);
+
+std::vector<Substitution>
+    get_expanded_substitution_set(MachineComputeSpecification const &resources);
 
 Substitution create_replicate_linear_combine(positive_int num_dims,
                                              positive_int degree,
@@ -33,6 +38,8 @@ Substitution create_partition_softmax_combine(ff_dim_t softmax_dim,
                                               ff_dim_t partition_dim,
                                               positive_int degree);
 Substitution create_fuse_linear_activation(Activation activation);
+
+Substitution create_fuse_batch_norm_activation(Activation activation);
 
 } // namespace FlexFlow
 

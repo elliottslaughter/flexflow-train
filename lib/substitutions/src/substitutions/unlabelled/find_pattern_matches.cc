@@ -17,6 +17,8 @@
 #include "utils/many_to_one/invert_many_to_one.h"
 #include "utils/many_to_one/many_to_one_from_map.h"
 #include "utils/overload.h"
+#include "utils/graph/open_kwarg_dataflow_graph/algorithms/get_open_kwarg_dataflow_graph_data.h"
+#include "utils/hash-utils.h"
 
 namespace FlexFlow {
 
@@ -24,13 +26,19 @@ static std::optional<UnlabelledKwargDataflowGraphPatternMatch>
     get_candidate_singleton_match(
         UnlabelledGraphPattern const &pattern,
         OpenKwargDataflowGraphView<int, TensorSlotName> const &graph,
-        Node const &graph_node) {
+        Node const &graph_node,
+        MatchAdditionalCriterion const &additional_criterion) {
   ASSERT(is_singleton_pattern(pattern));
 
   PatternNode pattern_node = get_only(get_pattern_nodes(pattern));
 
+  if (!additional_criterion.node_criterion(pattern_node, graph_node)) {
+    return std::nullopt;
+  }
+
   UnlabelledKwargDataflowGraphPatternMatch match =
       empty_unlabelled_pattern_match();
+
   match.node_assignment.equate(pattern_node, graph_node);
 
   std::map<TensorSlotName, PatternValue> pattern_outputs =
@@ -44,6 +52,12 @@ static std::optional<UnlabelledKwargDataflowGraphPatternMatch>
 
   if (keys(pattern_outputs) != keys(graph_outputs)) {
     return std::nullopt;
+  }
+
+  for (auto const &[slot_name, pattern_val] : pattern_outputs) {
+    if (!additional_criterion.value_criterion(pattern_val, graph_outputs.at(slot_name))) {
+      return std::nullopt;
+    }
   }
 
   std::map<TensorSlotName, PatternValue> pattern_node_inputs =
@@ -60,6 +74,12 @@ static std::optional<UnlabelledKwargDataflowGraphPatternMatch>
 
   if (keys(graph_node_inputs) != keys(pattern_node_inputs)) {
     return std::nullopt;
+  }
+
+  for (auto const &[slot_name, pattern_val] : pattern_node_inputs) {
+    if (!additional_criterion.value_criterion(pattern_val, graph_node_inputs.at(slot_name))) {
+      return std::nullopt;
+    }
   }
 
   ManyToOne<TensorSlotName, PatternInput> m_pattern_node_inputs =
@@ -79,8 +99,10 @@ static std::optional<UnlabelledKwargDataflowGraphPatternMatch>
 
   match.input_assignment = input_assignment.l_to_r();
 
+  /*
   ASSERT(unlabelled_pattern_does_match(
-      pattern, graph, match, match_additional_crition_always_true()));
+      pattern, graph, match, additional_criterion));
+  */ 
 
   return match;
 }
@@ -112,19 +134,25 @@ std::vector<UnlabelledKwargDataflowGraphPatternMatch>
         UnlabelledGraphPattern const &pattern,
         OpenKwargDataflowGraphView<int, TensorSlotName> const &graph,
         MatchAdditionalCriterion const &additional_criterion) {
+
   std::vector<UnlabelledKwargDataflowGraphPatternMatch> matches;
   if (is_singleton_pattern(pattern)) {
     for (Node const &graph_node : get_nodes(graph)) {
       std::optional<UnlabelledKwargDataflowGraphPatternMatch> candidate =
-          get_candidate_singleton_match(pattern, graph, graph_node);
-      if (candidate.has_value() &&
+          get_candidate_singleton_match(pattern, graph, graph_node, additional_criterion);
+      if (candidate.has_value()
+          /*
+          &&
           unlabelled_pattern_does_match(
-              pattern, graph, candidate.value(), additional_criterion)) {
+              pattern, graph, candidate.value(), additional_criterion)
+          */
+      ) {
         matches.push_back(candidate.value());
       }
     }
   } else {
     PatternSplit split = find_even_split(pattern);
+    std::set<StandardPatternEdge> split_edges = get_pattern_edges_across_topological_split(pattern, split);
     PatternSplitResult subpatterns = apply_split(pattern, split);
     std::vector<UnlabelledKwargDataflowGraphPatternMatch> prefix_matches =
         find_unlabelled_pattern_matches(
@@ -151,9 +179,15 @@ std::vector<UnlabelledKwargDataflowGraphPatternMatch>
                 postfix_match,
                 subpatterns.full_pattern_values_to_subpattern_1_inputs,
                 subpatterns.full_pattern_values_to_subpattern_2_inputs);
-        if (unsplit.has_value() &&
+        if (unsplit.has_value() 
+            &&
             unlabelled_pattern_does_match(
-                pattern, graph, unsplit.value(), additional_criterion)) {
+                pattern, 
+                graph, 
+                unsplit.value(), 
+                additional_criterion,
+                split_edges)
+        ) {
           matches.push_back(unsplit.value());
         }
       }

@@ -18,6 +18,7 @@ includes = [
   "op-attrs/aggregate_op.dtg.h",
   "op-attrs/regularizer_attrs.dtg.h",
   "op-attrs/pool_op.dtg.h",
+  "op-attrs/ops/batch_norm_mode.dtg.h",
   "op-attrs/tensor_shape.dtg.h",
   "op-attrs/datatype.dtg.h",
   "<cstddef>",
@@ -68,6 +69,9 @@ type = "std::optional<::FlexFlow::RegularizerAttrs>"
 
 [[values]]
 type = "::FlexFlow::PoolOp"
+
+[[values]]
+type = "::FlexFlow::BatchNormMode"
 
 [[values]]
 type = "::FlexFlow::TensorShape"

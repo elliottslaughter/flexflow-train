@@ -1,0 +1,10 @@
+#ifndef _FLEXFLOW_LIB_COMPILER_INCLUDE_COMPILER_UNITY_ALGORITHM_UNITY_ALGORITHM_H
+#define _FLEXFLOW_LIB_COMPILER_INCLUDE_COMPILER_UNITY_ALGORITHM_UNITY_ALGORITHM_H
+
+namespace FlexFlow {
+
+void benchmark_unity_algorithm(bool);
+
+} // namespace FlexFlow
+
+#endif

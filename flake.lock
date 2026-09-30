@@ -65,17 +65,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1790194148,
-        "narHash": "sha256-uJABHiDMksjohBhFwarvJQpRslHBCYj3k/YOP9Fqnss=",
+        "lastModified": 1790786380,
+        "narHash": "sha256-b86721iwr0sNFdB6Q1FjzRZzKUfqXyjmzdPbunEy2wA=",
         "ref": "refs/heads/update-nix",
-        "rev": "5a69f113bb1ae74762319c135a44208c58fd0fad",
-        "revCount": 169,
+        "rev": "5f50c6f0cc3267f049ab296de11375d421b02f1f",
+        "revCount": 174,
         "type": "git",
         "url": "https://github.com/elliottslaughter/proj.git"
       },
       "original": {
         "ref": "refs/heads/update-nix",
-        "rev": "5a69f113bb1ae74762319c135a44208c58fd0fad",
+        "rev": "5f50c6f0cc3267f049ab296de11375d421b02f1f",
         "type": "git",
         "url": "https://github.com/elliottslaughter/proj.git"
       }

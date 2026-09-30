@@ -21,6 +21,7 @@ std::optional<UnlabelledKwargDataflowGraphPatternMatch>
             &merged_graph_values_to_inputs_of_1,
         bidict<PatternValue, PatternInput> const
             &merged_graph_values_to_inputs_of_2) {
+
   bidict<PatternNode, Node> merged_node_assignment = ({
     std::optional<bidict<PatternNode, Node>> result =
         try_merge_nondisjoint_bidicts(subpattern_1.node_assignment,
@@ -33,16 +34,21 @@ std::optional<UnlabelledKwargDataflowGraphPatternMatch>
 
   std::map<PatternInput, OpenKwargDataflowValue<int, TensorSlotName>>
       merged_input_assignment = ({
+
         std::map<PatternValue, OpenKwargDataflowValue<int, TensorSlotName>>
             lifted_input_assignment_1 = map_keys(
-                subpattern_1.input_assignment, [&](PatternInput const &pi1) {
+                subpattern_1.input_assignment,
+                [&](PatternInput const &pi1) {
                   return merged_graph_values_to_inputs_of_1.at_r(pi1);
                 });
+
         std::map<PatternValue, OpenKwargDataflowValue<int, TensorSlotName>>
             lifted_input_assignment_2 = map_keys(
-                subpattern_2.input_assignment, [&](PatternInput const &pi2) {
+                subpattern_2.input_assignment,
+                [&](PatternInput const &pi2) {
                   return merged_graph_values_to_inputs_of_2.at_r(pi2);
                 });
+
         std::optional<
             std::map<PatternValue, OpenKwargDataflowValue<int, TensorSlotName>>>
             merged = try_merge_nondisjoint_maps(lifted_input_assignment_1,
@@ -50,6 +56,7 @@ std::optional<UnlabelledKwargDataflowGraphPatternMatch>
         if (!merged.has_value()) {
           return std::nullopt;
         }
+
         filtermap_keys(
             merged.value(),
             [](PatternValue const &v) -> std::optional<PatternInput> {

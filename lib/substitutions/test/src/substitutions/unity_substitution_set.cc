@@ -200,16 +200,28 @@ parallel_tensor_guid_t add_conv2d_layer(
 }
 
 TEST_SUITE(FF_TEST_SUITE) {
-  TEST_CASE("get_substitution_set") {
+  TEST_CASE("get_unity_substitution_set") {
     MachineComputeSpecification machine_spec = MachineComputeSpecification{
         /*num_nodes=*/2_p,
         /*num_cpus_per_node=*/8_p,
         /*num_gpus_per_node=*/4_p,
     };
 
-    std::vector<Substitution> result = get_substitution_set(machine_spec);
+    std::vector<Substitution> result = get_unity_substitution_set(machine_spec);
 
     CHECK(result.size() == 248);
+  }
+
+  TEST_CASE("get_expanded_substitution_set") {
+    MachineComputeSpecification machine_spec = MachineComputeSpecification{
+        /*num_nodes=*/2_p,
+        /*num_cpus_per_node=*/8_p,
+        /*num_gpus_per_node=*/4_p,
+    };
+
+    std::vector<Substitution> result = get_expanded_substitution_set(machine_spec);
+
+    CHECK(result.size() == 254);
   }
 
   TEST_CASE("create_replicate_linear_combine, use_bias = false") {
